@@ -1,0 +1,31 @@
+{
+  "name": "identity",
+  "version": "1.0.0",
+  "description": "A Collaborative Pair-Programming IDE",
+  "homepage": "https://github.com/tmedina23/IDEntity#readme",
+  "bugs": {
+    "url": "https://github.com/tmedina23/IDEntity/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmedina23/IDEntity.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "main": "main.js",
+  "scripts": {
+    "build": "node ./node_modules/webpack/bin/webpack.js --progress",
+    "execute": "node ./node_modules/electron/cli.js ."
+  },
+  "dependencies": {
+    "css-loader": "^7.1.4",
+    "electron": "^40.4.1",
+    "file-loader": "^6.2.0",
+    "monaco-editor": "^0.55.1",
+    "monaco-editor-webpack-plugin": "^7.1.1",
+    "style-loader": "^4.0.0",
+    "webpack": "^5.105.2",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.3"
+  }
+}
