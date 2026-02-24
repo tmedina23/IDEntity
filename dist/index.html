@@ -4,15 +4,32 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
         <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
         <style>
+            body {
+                margin: 0;
+                padding: 0;
+            }
             #container {
-                width: 800px;
-                height: 600px;
-                border: 1px solid grey;
+                margin-left: 20vw;
+                width: 80vw;
+                height: 100vh;
+            }
+            #file-tree {
+                width: 20vw;
+                height: 100vh;
+                position: absolute;
+                left: 0;
+                top: 0;
+                overflow-y: auto;
+                background: #1e1e1e;
+                color: #ccc;
             }
         </style>
     </head>
     <body>
         <div id="container"></div>
         <script src="./app.bundle.js"></script>
+        <div style="display: flex; height: 100vh;">
+        <div id="file-tree"></div>
+        </div>
     </body>
 </html>

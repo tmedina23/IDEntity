@@ -1,12 +1,15 @@
 // I added a comment with IDEntity
 
 const { app, Menu, BrowserWindow, dialog, ipcMain } = require('electron');
+const { name } = require('file-loader');
 const fs = require('fs');
 const { type } = require('os');
 const path = require('path');
 
 let mainWindow;
 const isMac = process.platform === 'darwin'
+
+let fileTreeEntries = [];
 
 const createWindow = () => {
     mainWindow = new BrowserWindow({
@@ -49,6 +52,36 @@ const openFile = async () => {
     console.log("opening" + currentFilePath)
 }
 
+const openFolder = async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    if (canceled) return;
+
+    const folderPath = filePaths[0];
+    const fileTree = buildFileTree(folderPath);
+    mainWindow.webContents.send('folder:open', { folderPath, fileTree });
+    mainWindow.setTitle("IDEntity - " + folderPath);
+    console.log("opening folder: " + folderPath)
+}
+
+const buildFileTree = (dirPath) => {
+    fileTreeEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+    return fileTreeEntries.map(entry => ({
+        name: entry.name,
+        path: path.join(dirPath, entry.name),
+        isDirectory: entry.isDirectory(),
+        children: entry.isDirectory() ? buildFileTree(path.join(dirPath, entry.name)) : null
+    }));
+}
+
+ipcMain.on('file:select', async (event, filePath) => {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    mainWindow.webContents.send('file:open', { filePath, content });
+    mainWindow.setTitle("IDEntity - " + filePath);
+    console.log("opening" + filePath)
+});
+
 ipcMain.on('file:content', async (event, { mode, content }) => {
     if (mode === 'saveAs' || !currentFilePath) {
         const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {});
@@ -65,10 +98,16 @@ const template = [
   {
     label: 'File',
     submenu: [
+        // New File
         {
             label: 'Open File',
             accelerator: isMac ? 'Cmd+O' : 'Ctrl+O',
             click: openFile
+        },
+        {
+            label: 'Open Folder',
+            accelerator: isMac ? 'Cmd+Shift+O' : 'Ctrl+Shift+O',
+            click: openFolder
         },
         {type: 'separator'},
         {

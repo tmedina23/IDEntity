@@ -42,6 +42,36 @@ window.electronAPI.onOpenFile(({ filePath, content }) => {
 	oldModel.dispose();
 });
 
+window.electronAPI.onOpenFolder(({ folderPath, fileTree }) => {
+	const cont = document.getElementById('file-tree');
+	cont.innerHTML = '';
+
+	const renderTree = (nodes, parent) => {
+		nodes.forEach(node => {
+			const li = document.createElement('li');
+			li.textContent = node.name;
+			parent.appendChild(li);
+
+			if (node.isDirectory && node.children) {
+				const ul = document.createElement('ul');
+				ul.style.display = 'none';
+				li.appendChild(ul);
+				renderTree(node.children, ul);
+
+				li.addEventListener('click', (e) => {
+					e.stopPropagation();
+					ul.style.display = ul.style.display === 'none' ? 'block' : 'none';
+				});
+			} else {
+				li.addEventListener('click', () => {
+					window.electronAPI.selectFile(node.path);
+				});
+			}
+		});
+	};
+	renderTree(fileTree, cont);
+});
+
 window.electronAPI.onSaveFile((mode) => {
 	const content = editor.getValue();
 	console.log("Saving content with mode: " + mode);
