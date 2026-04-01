@@ -1,5 +1,6 @@
 import * as monaco from 'monaco-editor';
 import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 
 self.MonacoEnvironment = {
@@ -20,6 +21,7 @@ self.MonacoEnvironment = {
 	}
 };
 
+// --- Monaco Editor ---
 const editor = monaco.editor.create(document.getElementById('container'), {
 	value: ['function x() {', '\tconsole.log("Hello world!");', '}'].join('\n'),
 	language: 'javascript',
@@ -43,8 +45,10 @@ const extToLanguage = {
 	py: 'python', md: 'markdown',
 };
 
+let currentFilePath = null;
+
 window.electronAPI.onOpenFile(({ filePath, content }) => {
-	console.log("Opening: " + filePath)
+	currentFilePath = filePath;
 	const extension = filePath.split('.').pop().toLowerCase();
 	const language = extToLanguage[extension] || 'plaintext';
 
@@ -89,6 +93,58 @@ window.electronAPI.onOpenFolder(({ folderPath, fileTree }) => {
 
 window.electronAPI.onSaveFile((mode) => {
 	const content = editor.getValue();
-	console.log("Saving content with mode: " + mode);
 	window.electronAPI.sendContent(mode, content);
+});
+
+// --- xterm.js Terminal ---
+const term = new Terminal({
+	theme: {
+		background: '#111111',
+		foreground: '#d4d4d4',
+		cursor: '#d4d4d4',
+	},
+	fontFamily: "'Cascadia Code', 'Consolas', 'Courier New', monospace",
+	fontSize: 13,
+	scrollback: 1000,
+	convertEol: true,
+});
+
+const fitAddon = new FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+
+// Send keystrokes from xterm to pty
+term.onData(data => {
+	window.electronAPI.writePty(data);
+});
+
+// Receive output from pty and write to xterm
+window.electronAPI.onPtyData(data => {
+	term.write(data);
+});
+
+window.electronAPI.onPtyExit(() => {
+	term.writeln('\r\n\x1b[33m[process exited]\x1b[0m');
+});
+
+// Start the pty shell
+window.electronAPI.createPty(term.cols, term.rows);
+
+// Keep terminal sized to its container
+const resizeObserver = new ResizeObserver(() => {
+	fitAddon.fit();
+	window.electronAPI.resizePty(term.cols, term.rows);
+});
+resizeObserver.observe(document.getElementById('terminal'));
+
+// --- Run Button ---
+const runBtn = document.getElementById('run-btn');
+
+runBtn.addEventListener('click', () => {
+	const code = editor.getValue();
+	// Always pass current editor content — main process writes to temp file
+	window.electronAPI.runFile(code, currentFilePath);
+	// Focus the terminal so the user can see output / interact
+	term.focus();
 });

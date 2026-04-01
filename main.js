@@ -1,10 +1,10 @@
 // I added a comment with IDEntity
 
 const { app, Menu, BrowserWindow, dialog, ipcMain } = require('electron');
-const { name } = require('file-loader');
 const fs = require('fs');
-const { type } = require('os');
 const path = require('path');
+const os = require('os');
+const pty = require('node-pty');
 
 let mainWindow;
 const isMac = process.platform === 'darwin'
@@ -60,6 +60,7 @@ const openFolder = async () => {
     if (canceled) return;
 
     const folderPath = filePaths[0];
+    currentFolderPath = folderPath;
     const fileTree = buildFileTree(folderPath);
     mainWindow.webContents.send('folder:open', { folderPath, fileTree });
     mainWindow.setTitle("IDEntity - " + folderPath);
@@ -82,6 +83,60 @@ ipcMain.on('file:select', async (event, filePath) => {
     mainWindow.webContents.send('file:open', { filePath, content });
     mainWindow.setTitle("IDEntity - " + filePath);
     console.log("opening" + filePath)
+});
+
+let ptyProcess = null;
+let currentFolderPath = null;
+
+const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || 'bash');
+
+ipcMain.on('pty:create', (event, { cols, rows }) => {
+    if (ptyProcess) {
+        ptyProcess.kill();
+        ptyProcess = null;
+    }
+
+    const cwd = currentFolderPath || os.homedir();
+    ptyProcess = pty.spawn(shell, [], {
+        name: 'xterm-256color',
+        cols: cols || 80,
+        rows: rows || 24,
+        cwd,
+        env: process.env
+    });
+
+    ptyProcess.onData(data => {
+        if (mainWindow) mainWindow.webContents.send('pty:data', data);
+    });
+
+    ptyProcess.onExit(() => {
+        if (mainWindow) mainWindow.webContents.send('pty:exit');
+        ptyProcess = null;
+    });
+});
+
+ipcMain.on('pty:write', (event, data) => {
+    if (ptyProcess) ptyProcess.write(data);
+});
+
+ipcMain.on('pty:resize', (event, { cols, rows }) => {
+    if (ptyProcess) ptyProcess.resize(cols, rows);
+});
+
+ipcMain.on('pty:kill', () => {
+    if (ptyProcess) {
+        ptyProcess.kill();
+        ptyProcess = null;
+    }
+});
+
+// Run button: write editor content to temp file and execute via the pty shell
+ipcMain.on('run:file', (event, { code, filePath }) => {
+    const tmpPath = path.join(os.tmpdir(), 'identity_run.py');
+    fs.writeFileSync(tmpPath, code, 'utf-8');
+    const runPath = filePath || tmpPath;
+    const cmd = `python "${runPath}"\r`;
+    if (ptyProcess) ptyProcess.write(cmd);
 });
 
 ipcMain.on('file:content', async (event, { mode, content }) => {
