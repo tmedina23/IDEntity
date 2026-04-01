@@ -10,6 +10,7 @@ let mainWindow;
 const isMac = process.platform === 'darwin'
 
 let fileTreeEntries = [];
+let currentFilePath = null;
 
 const createWindow = () => {
     mainWindow = new BrowserWindow({
@@ -77,6 +78,7 @@ const buildFileTree = (dirPath) => {
 
 ipcMain.on('file:select', async (event, filePath) => {
     const content = fs.readFileSync(filePath, 'utf-8');
+    currentFilePath = filePath;
     mainWindow.webContents.send('file:open', { filePath, content });
     mainWindow.setTitle("IDEntity - " + filePath);
     console.log("opening" + filePath)

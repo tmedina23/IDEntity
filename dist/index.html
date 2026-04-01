@@ -9,12 +9,22 @@
                 padding: 0;
             }
             #container {
-                margin-left: 20vw;
+                margin-left: 10vw;
                 width: 80vw;
-                height: 100vh;
+                height: 70vh;
+            }
+            #terminal {
+                position: absolute;
+                bottom: 0;
+                left: 10vw;
+                width: 80vw;
+                height: 30vh;
+                background: #1e1e1e;
+                color: #ccc;
+                border-top: 3px solid #454545;
             }
             #file-tree {
-                width: 20vw;
+                width: 10vw;
                 height: 100vh;
                 position: absolute;
                 left: 0;
@@ -22,14 +32,27 @@
                 overflow-y: auto;
                 background: #1e1e1e;
                 color: #ccc;
+                border-right: 3px solid #454545;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 14px;
+                overflow-x: hidden;
+            }
+            li {
+                list-style: none;
+                padding: 5px 10px;
+                cursor: pointer;
+            }
+            ul {
+                padding-left: 20px;
             }
         </style>
     </head>
     <body>
         <div id="container"></div>
+        <div id="terminal"></div>
         <script src="./app.bundle.js"></script>
         <div style="display: flex; height: 100vh;">
-        <div id="file-tree"></div>
+            <div id="file-tree"></div>
         </div>
     </body>
 </html>

@@ -1,4 +1,6 @@
 import * as monaco from 'monaco-editor';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 
 self.MonacoEnvironment = {
 	getWorkerUrl: function (moduleId, label) {
@@ -23,6 +25,16 @@ const editor = monaco.editor.create(document.getElementById('container'), {
 	language: 'javascript',
 	theme: 'vs-dark',
 });
+
+var parentElement = document.getElementById('terminal');
+
+if (parentElement) {
+    var term = new Terminal();
+    term.open(parentElement);
+    term.write('Hello from the IDEntity terminal!\r\n');
+} else {
+    console.error('Parent element #terminal-container not found in the DOM.');
+}
 
 const extToLanguage = {
 	js: 'javascript', ts: 'typescript',
@@ -52,6 +64,9 @@ window.electronAPI.onOpenFolder(({ folderPath, fileTree }) => {
 			li.textContent = node.name;
 			parent.appendChild(li);
 
+			if (node.isDirectory) {
+				li.textContent += '/';
+			} 
 			if (node.isDirectory && node.children) {
 				const ul = document.createElement('ul');
 				ul.style.display = 'none';
