@@ -2,7 +2,7 @@ const path = require('path');
 
 module.exports = {
 	entry: {
-		app: './index.js',
+		app: './index.jsx',
 		'editor.worker': 'monaco-editor/esm/vs/editor/editor.worker.js',
 		'json.worker': 'monaco-editor/esm/vs/language/json/json.worker',
 		'css.worker': 'monaco-editor/esm/vs/language/css/css.worker',
@@ -23,6 +23,17 @@ module.exports = {
 			{
 				test: /\.ttf$/,
 				type: 'asset/resource',
+			},
+			{
+				test: /\.(js|jsx)$/,
+				exclude: /node_modules/,
+				use: {
+				loader: 'babel-loader',
+				},
+			},
+			{
+				test: /\.(ico|png|jpg|jpeg|svg|gif)$/,
+				type: "asset/resource"
 			}
 		]
 	}

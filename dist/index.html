@@ -3,94 +3,10 @@
     <head>
         <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
         <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
-        <style>
-            body {
-                margin: 0;
-                padding: 0;
-                overflow: hidden;
-                background: #1e1e1e;
-            }
-            #file-tree {
-                width: 20vw;
-                height: 100vh;
-                position: absolute;
-                left: 0;
-                top: 0;
-                overflow-y: auto;
-                background: #1e1e1e;
-                color: #ccc;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 13px;
-            }
-            #right-panel {
-                margin-left: 20vw;
-                width: 80vw;
-                height: 100vh;
-                display: flex;
-                flex-direction: column;
-            }
-            #toolbar {
-                background: #2d2d2d;
-                padding: 4px 8px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                border-bottom: 1px solid #444;
-                flex-shrink: 0;
-            }
-            #run-btn {
-                background: #3a8c3a;
-                color: #fff;
-                border: none;
-                border-radius: 4px;
-                padding: 4px 14px;
-                cursor: pointer;
-                font-size: 13px;
-            }
-            #run-btn:hover { background: #4cae4c; }
-            /* Editor takes up ~60% of vertical space, terminal 40% */
-            #container {
-                flex: 3;
-                min-height: 0;
-            }
-            #terminal-panel {
-                flex: 2;
-                min-height: 0;
-                display: flex;
-                flex-direction: column;
-                border-top: 2px solid #333;
-                background: #111111;
-            }
-            #terminal-titlebar {
-                background: #252525;
-                color: #888;
-                font-family: 'Consolas', monospace;
-                font-size: 11px;
-                padding: 2px 10px;
-                flex-shrink: 0;
-                border-bottom: 1px solid #333;
-                user-select: none;
-            }
-            #terminal {
-                flex: 1;
-                min-height: 0;
-                padding: 4px;
-                overflow: hidden;
-            }
-        </style>
+        <title>IDEntity</title>
     </head>
     <body>
-        <div id="file-tree"></div>
-        <div id="right-panel">
-            <div id="toolbar">
-                <button id="run-btn">&#9654; Run</button>
-            </div>
-            <div id="container"></div>
-            <div id="terminal-panel">
-                <div id="terminal-titlebar">TERMINAL</div>
-                <div id="terminal"></div>
-            </div>
-        </div>
+        <div id="root"></div>
         <script src="./app.bundle.js"></script>
     </body>
 </html>
