@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(npm uninstall:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const yw = require\\('y-websocket'\\); console.log\\(Object.keys\\(yw\\)\\)\")",
+      "Bash(node -e \"try { const u = require\\('y-websocket/bin/utils'\\); console.log\\(Object.keys\\(u\\)\\); } catch\\(e\\) { console.log\\('no bin/utils:', e.message\\); }\")",
+      "Bash(node -e \"const p = require\\('./node_modules/y-websocket/package.json'\\); console.log\\(JSON.stringify\\(p.exports, null, 2\\)\\)\")",
+      "Bash(node -e \"require\\('y-protocols/sync'\\); console.log\\('y-protocols ok'\\)\")",
+      "Bash(node -e \"require\\('lib0/encoding'\\); console.log\\('lib0 ok'\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/y-monaco/package.json'\\); console.log\\(p.version, p.main || p.module\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(npm run *)"
     ]
   }
 }

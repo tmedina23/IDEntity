@@ -2,3 +2,5 @@ dist/*.js
 dist/*.txt
 dist/*.ttf
 node_modules/
+.claude/
+CLAUDE.md

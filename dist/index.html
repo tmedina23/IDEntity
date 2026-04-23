@@ -10,6 +10,121 @@
                 overflow: hidden;
                 background: #1e1e1e;
             }
+
+            /* --- Session Overlay --- */
+            #session-overlay {
+                position: fixed;
+                inset: 0;
+                background: #141414;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
+            }
+            #session-modal {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 16px;
+            }
+            #session-logo {
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 36px;
+                font-weight: bold;
+                color: #d4d4d4;
+                letter-spacing: 4px;
+            }
+            #session-subtitle {
+                font-family: 'Consolas', monospace;
+                font-size: 13px;
+                color: #555;
+                margin-top: -10px;
+            }
+            #session-buttons, #join-form {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                width: 240px;
+            }
+            .session-btn {
+                background: #2d2d2d;
+                color: #d4d4d4;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 10px 0;
+                font-size: 13px;
+                font-family: 'Consolas', monospace;
+                cursor: pointer;
+                transition: background 0.15s;
+            }
+            .session-btn:hover { background: #3a3a3a; }
+            .session-btn.primary { background: #0e639c; border-color: #0e639c; }
+            .session-btn.primary:hover { background: #1177bb; }
+            .session-btn.secondary { color: #888; }
+            #host-ip-input {
+                background: #1e1e1e;
+                color: #d4d4d4;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 8px 10px;
+                font-size: 13px;
+                font-family: 'Consolas', monospace;
+                outline: none;
+            }
+            #host-ip-input:focus { border-color: #0e639c; }
+            #session-status {
+                font-family: 'Consolas', monospace;
+                font-size: 12px;
+                color: #888;
+                min-height: 18px;
+            }
+            #session-status.error { color: #e74c3c; }
+
+            /* --- Identity picker --- */
+            #identity-form {
+                display: none;
+                flex-direction: column;
+                align-items: center;
+                gap: 14px;
+                width: 260px;
+            }
+            #identity-title {
+                font-family: 'Consolas', monospace;
+                font-size: 14px;
+                color: #d4d4d4;
+            }
+            #user-name-input {
+                width: 100%;
+                box-sizing: border-box;
+                background: #1e1e1e;
+                color: #d4d4d4;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 8px 10px;
+                font-size: 14px;
+                font-family: 'Consolas', monospace;
+                outline: none;
+                text-align: center;
+            }
+            #user-name-input:focus { border-color: #0e639c; }
+            #color-swatches {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .color-swatch {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                cursor: pointer;
+                border: 3px solid transparent;
+                transition: transform 0.1s, border-color 0.1s;
+            }
+            .color-swatch:hover { transform: scale(1.15); }
+            .color-swatch.selected { border-color: #fff; }
+
+            /* --- Main Layout --- */
             #file-tree {
                 width: 20vw;
                 height: 100vh;
@@ -48,7 +163,37 @@
                 font-size: 13px;
             }
             #run-btn:hover { background: #4cae4c; }
-            /* Editor takes up ~60% of vertical space, terminal 40% */
+            #session-info {
+                margin-left: auto;
+                color: #888;
+                font-size: 12px;
+                font-family: 'Consolas', monospace;
+                display: none;
+            }
+            #session-info.hosting { color: #4cae4c; }
+            #session-info.connected { color: #0e639c; }
+
+            /* Remote cursor base styles — per-user colors injected dynamically */
+            .yRemoteSelection { opacity: 0.4; }
+            .yRemoteSelectionHead {
+                position: absolute;
+                border-left: 2px solid;
+                height: 100%;
+                box-sizing: border-box;
+            }
+            .yRemoteSelectionHead::before {
+                content: attr(data-user);
+                position: absolute;
+                top: -18px;
+                left: -2px;
+                padding: 1px 5px;
+                border-radius: 3px 3px 3px 0;
+                font-size: 11px;
+                font-family: 'Consolas', monospace;
+                white-space: nowrap;
+                pointer-events: none;
+            }
+            /* Dynamic per-user rules injected via <style id="remote-cursor-styles"> */
             #container {
                 flex: 3;
                 min-height: 0;
@@ -80,10 +225,37 @@
         </style>
     </head>
     <body>
+        <!-- Session Overlay -->
+        <div id="session-overlay">
+            <div id="session-modal">
+                <div id="session-logo">IDEntity</div>
+                <div id="session-subtitle">collaborative IDE</div>
+                <div id="session-buttons">
+                    <button id="btn-host" class="session-btn primary">Host Session</button>
+                    <button id="btn-join" class="session-btn">Join Session</button>
+                    <button id="btn-solo" class="session-btn secondary">Solo Mode</button>
+                </div>
+                <div id="join-form" style="display:none">
+                    <input id="host-ip-input" type="text" placeholder="Host IP address (e.g. 192.168.1.5)" />
+                    <button id="btn-connect" class="session-btn primary">Connect</button>
+                    <button id="btn-back" class="session-btn secondary">Back</button>
+                </div>
+                <div id="session-status"></div>
+                <div id="identity-form">
+                    <div id="identity-title">Choose your identity</div>
+                    <input id="user-name-input" type="text" placeholder="Your name" maxlength="20" />
+                    <div id="color-swatches"></div>
+                    <button id="btn-enter" class="session-btn primary">Enter IDE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main IDE -->
         <div id="file-tree"></div>
         <div id="right-panel">
             <div id="toolbar">
                 <button id="run-btn">&#9654; Run</button>
+                <span id="session-info"></span>
             </div>
             <div id="container"></div>
             <div id="terminal-panel">

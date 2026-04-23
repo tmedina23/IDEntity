@@ -29,7 +29,11 @@
     "style-loader": "^4.0.0",
     "webpack": "^5.105.2",
     "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.3"
+    "webpack-dev-server": "^5.2.3",
+    "ws": "^8.20.0",
+    "y-monaco": "^0.1.6",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3"

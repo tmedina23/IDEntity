@@ -1,20 +1,32 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  onOpenFile: (callback) => ipcRenderer.on('file:open', (_event, data) => callback(data)),
-  onOpenFolder: (callback) => ipcRenderer.on('folder:open', (_event, data) => callback(data)),
-  onSaveFile: (callback) => ipcRenderer.on('file:save', (_event, data) => callback(data)),
-  sendContent: (mode, content) => ipcRenderer.send('file:content', { mode, content }),
-  selectFile: (filePath) => ipcRenderer.send('file:select', filePath),
+    // File
+    onOpenFile: (cb) => ipcRenderer.on('file:open', (_, data) => cb(data)),
+    onOpenFolder: (cb) => ipcRenderer.on('folder:open', (_, data) => cb(data)),
+    onSaveFile: (cb) => ipcRenderer.on('file:save', (_, data) => cb(data)),
+    sendContent: (mode, content) => ipcRenderer.send('file:content', { mode, content }),
+    selectFile: (filePath) => ipcRenderer.send('file:select', filePath),
 
-  // Terminal (node-pty <-> xterm.js)
-  createPty: (cols, rows) => ipcRenderer.send('pty:create', { cols, rows }),
-  writePty: (data) => ipcRenderer.send('pty:write', data),
-  resizePty: (cols, rows) => ipcRenderer.send('pty:resize', { cols, rows }),
-  killPty: () => ipcRenderer.send('pty:kill'),
-  onPtyData: (callback) => ipcRenderer.on('pty:data', (_event, data) => callback(data)),
-  onPtyExit: (callback) => ipcRenderer.on('pty:exit', () => callback()),
+    // Terminal
+    createPty: (cols, rows) => ipcRenderer.send('pty:create', { cols, rows }),
+    writePty: (data) => ipcRenderer.send('pty:write', data),
+    resizePty: (cols, rows) => ipcRenderer.send('pty:resize', { cols, rows }),
+    killPty: () => ipcRenderer.send('pty:kill'),
+    onPtyData: (cb) => ipcRenderer.on('pty:data', (_, data) => cb(data)),
+    onPtyExit: (cb) => ipcRenderer.on('pty:exit', () => cb()),
 
-  // Run button — writes current editor code into the pty shell
-  runFile: (code, filePath) => ipcRenderer.send('run:file', { code, filePath }),
+    // Run
+    runFile: (code, filePath) => ipcRenderer.send('run:file', { code, filePath }),
+
+    // Session
+    hostSession: () => ipcRenderer.send('session:host'),
+    joinSession: (ip) => ipcRenderer.send('session:join', { ip }),
+    soloSession: () => ipcRenderer.send('session:solo'),
+    onSessionStarted: (cb) => ipcRenderer.on('session:started', (_, data) => cb(data)),
+    onSessionConnected: (cb) => ipcRenderer.on('session:connected', (_, data) => cb(data)),
+    onSessionSoloStarted: (cb) => ipcRenderer.on('session:solo-started', () => cb()),
+    onSessionError: (cb) => ipcRenderer.on('session:error', (_, msg) => cb(msg)),
+    onGuestJoined: (cb) => ipcRenderer.on('session:guest-joined', (_, sid) => cb(sid)),
+    onGuestLeft: (cb) => ipcRenderer.on('session:guest-left', (_, sid) => cb(sid)),
 });
