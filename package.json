@@ -26,6 +26,8 @@
     "monaco-editor": "^0.55.1",
     "monaco-editor-webpack-plugin": "^7.1.1",
     "node-pty": "^1.1.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "style-loader": "^4.0.0",
     "webpack": "^5.105.2",
     "webpack-cli": "^6.0.1",
@@ -36,6 +38,10 @@
     "yjs": "^13.6.30"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3"
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.2",
+    "@babel/preset-react": "^7.28.5",
+    "@electron/rebuild": "^4.0.3",
+    "babel-loader": "^10.1.1"
   }
 }
