@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Run
     runFile: (code, filePath) => ipcRenderer.send('run:file', { code, filePath }),
 
+    // Menu actions (called from React toolbar dropdowns)
+    openFile:      () => ipcRenderer.send('menu:open-file'),
+    openFolder:    () => ipcRenderer.send('menu:open-folder'),
+    triggerSave:   () => ipcRenderer.send('menu:save'),
+    triggerSaveAs: () => ipcRenderer.send('menu:save-as'),
+    quit:          () => ipcRenderer.send('menu:quit'),
+
     // Session
     hostSession: () => ipcRenderer.send('session:host'),
     joinSession: (ip) => ipcRenderer.send('session:join', { ip }),

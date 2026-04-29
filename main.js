@@ -303,23 +303,12 @@ ipcMain.on('run:file', (event, { code, filePath }) => {
     ptyMap.get(LOCAL_SID)?.write(`python "${runPath}"\r`);
 });
 
-// --- Menu ---
-const template = [
-    {
-        label: 'File',
-        submenu: [
-            { label: 'Open File', accelerator: isMac ? 'Cmd+O' : 'Ctrl+O', click: openFile },
-            { label: 'Open Folder', accelerator: isMac ? 'Cmd+Shift+O' : 'Ctrl+Shift+O', click: openFolder },
-            { type: 'separator' },
-            { label: 'Save', accelerator: isMac ? 'Cmd+S' : 'Ctrl+S', click: () => mainWindow.webContents.send('file:save', 'save') },
-            { label: 'Save As', accelerator: isMac ? 'Cmd+Shift+S' : 'Ctrl+Shift+S', click: () => mainWindow.webContents.send('file:save', 'saveAs') },
-            { type: 'separator' },
-            isMac ? { role: 'close' } : { role: 'quit' }
-        ]
-    },
-    { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' }
-];
+// Remove native menu bar — UI is handled by React
+Menu.setApplicationMenu(null);
 
-Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+// --- Menu IPC (called from React toolbar) ---
+ipcMain.on('menu:open-file',   () => openFile());
+ipcMain.on('menu:open-folder', () => openFolder());
+ipcMain.on('menu:save',        () => mainWindow.webContents.send('file:save', 'save'));
+ipcMain.on('menu:save-as',     () => mainWindow.webContents.send('file:save', 'saveAs'));
+ipcMain.on('menu:quit',        () => app.quit());

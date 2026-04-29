@@ -103,6 +103,12 @@ export default function App() {
   const [running,        setRunning]        = useState(false);
   const [termHeight,     setTermHeight]     = useState(220);
 
+  // --- Menu dropdown state ---
+  const [openMenu, setOpenMenu] = useState(null); // 'file' | 'edit' | 'view' | 'window' | null
+
+  const closeMenu = useCallback(() => setOpenMenu(null), []);
+  const toggleMenu = useCallback((name) => setOpenMenu(o => o === name ? null : name), []);
+
   // --- Session state ---
   const [sessionMode,     setSessionMode]     = useState(null); // null=overlay, 'solo','host','guest'
   const [overlayPanel,    setOverlayPanel]    = useState("main"); // 'main','join','identity'
@@ -240,6 +246,25 @@ export default function App() {
     setSessionError("");
     window.electronAPI.joinSession(ip);
   }
+
+  // --- Keyboard shortcuts + click-outside to close menus ---
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      if (e.key === 'o' && !e.shiftKey) { e.preventDefault(); window.electronAPI.openFile(); }
+      if (e.key === 'O' &&  e.shiftKey) { e.preventDefault(); window.electronAPI.openFolder(); }
+      if (e.key === 's' && !e.shiftKey) { e.preventDefault(); window.electronAPI.triggerSave(); }
+      if (e.key === 'S' &&  e.shiftKey) { e.preventDefault(); window.electronAPI.triggerSaveAs(); }
+    };
+    const onClickOutside = () => setOpenMenu(null);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('click',   onClickOutside);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('click',   onClickOutside);
+    };
+  }, []);
 
   // --- Session IPC events ---
   useEffect(() => {
@@ -538,10 +563,68 @@ export default function App() {
           <div className="toolbar-brand">
             <img src={banner_logo} alt="IDEntity" />
           </div>
-          <nav className="menu-bar">
-            {["File", "Edit", "View", "Window"].map(m => (
-              <div key={m} className="menu-item">{m}</div>
-            ))}
+          <nav className="menu-bar" onClick={e => e.stopPropagation()}>
+
+            {/* File */}
+            <div className="menu-item-wrap">
+              <div className={`menu-item ${openMenu === "file" ? "active" : ""}`} onClick={() => toggleMenu("file")}>File</div>
+              {openMenu === "file" && (
+                <div className="dropdown">
+                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.openFile(); }}>
+                    Open File <span className="dd-shortcut">Ctrl+O</span>
+                  </div>
+                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.openFolder(); }}>
+                    Open Folder <span className="dd-shortcut">Ctrl+Shift+O</span>
+                  </div>
+                  <div className="dd-sep" />
+                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.triggerSave(); }}>
+                    Save <span className="dd-shortcut">Ctrl+S</span>
+                  </div>
+                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.triggerSaveAs(); }}>
+                    Save As <span className="dd-shortcut">Ctrl+Shift+S</span>
+                  </div>
+                  <div className="dd-sep" />
+                  <div className="dd-item danger" onClick={() => { closeMenu(); window.electronAPI.quit(); }}>Quit</div>
+                </div>
+              )}
+            </div>
+
+            {/* Edit */}
+            <div className="menu-item-wrap">
+              <div className={`menu-item ${openMenu === "edit" ? "active" : ""}`} onClick={() => toggleMenu("edit")}>Edit</div>
+              {openMenu === "edit" && (
+                <div className="dropdown">
+                  <div className="dd-item" onClick={() => { closeMenu(); document.execCommand("cut"); }}>Cut <span className="dd-shortcut">Ctrl+X</span></div>
+                  <div className="dd-item" onClick={() => { closeMenu(); document.execCommand("copy"); }}>Copy <span className="dd-shortcut">Ctrl+C</span></div>
+                  <div className="dd-item" onClick={() => { closeMenu(); document.execCommand("paste"); }}>Paste <span className="dd-shortcut">Ctrl+V</span></div>
+                  <div className="dd-sep" />
+                  <div className="dd-item" onClick={() => { closeMenu(); editorRef.current?.trigger("", "undo"); }}>Undo <span className="dd-shortcut">Ctrl+Z</span></div>
+                  <div className="dd-item" onClick={() => { closeMenu(); editorRef.current?.trigger("", "redo"); }}>Redo <span className="dd-shortcut">Ctrl+Y</span></div>
+                </div>
+              )}
+            </div>
+
+            {/* View */}
+            <div className="menu-item-wrap">
+              <div className={`menu-item ${openMenu === "view" ? "active" : ""}`} onClick={() => toggleMenu("view")}>View</div>
+              {openMenu === "view" && (
+                <div className="dropdown">
+                  <div className="dd-item" onClick={() => { closeMenu(); editorRef.current?.trigger("", "editor.action.toggleMinimap"); }}>Toggle Minimap</div>
+                  <div className="dd-item" onClick={() => { closeMenu(); editorRef.current?.trigger("", "editor.action.toggleWordWrap"); }}>Toggle Word Wrap</div>
+                </div>
+              )}
+            </div>
+
+            {/* Window */}
+            <div className="menu-item-wrap">
+              <div className={`menu-item ${openMenu === "window" ? "active" : ""}`} onClick={() => toggleMenu("window")}>Window</div>
+              {openMenu === "window" && (
+                <div className="dropdown">
+                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.quit(); }}>Close</div>
+                </div>
+              )}
+            </div>
+
           </nav>
           <div className="toolbar-spacer" />
           {sessionBadge && (
