@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Run
     runFile: (code, filePath) => ipcRenderer.send('run:file', { code, filePath }),
+    killRun: () => ipcRenderer.send('run:kill'),
+    onRunDone: (cb) => ipcRenderer.on('run:done', (_, code) => cb(code)),
 
     // Menu actions (called from React toolbar dropdowns)
     openFile:      () => ipcRenderer.send('menu:open-file'),

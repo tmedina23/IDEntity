@@ -1,4 +1,5 @@
 const { app, Menu, BrowserWindow, dialog, ipcMain } = require('electron');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -21,6 +22,8 @@ let wsClient = null; // guest: WS connection to host's term server
 // --- PTY Management ---
 const ptyMap = new Map(); // sessionId -> ptyProcess
 const LOCAL_SID = 'local';
+const guestSockets = new Map(); // sid -> WebSocket (guests mirroring host terminal)
+let runProcess = null; // active child_process for Run button
 const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || 'bash');
 let currentFolderPath = null;
 let currentFilePath = null;
@@ -122,33 +125,22 @@ function startYjsServer() {
 }
 
 // --- Terminal / Session WebSocket Server (host only) ---
+// Guests get a read-only mirror of the host terminal — no per-guest PTY.
 function startTermServer() {
     const termServer = new WebSocketServer({ port: TPORT });
     termServer.on('connection', (ws) => {
         const sid = crypto.randomUUID();
+        guestSockets.set(sid, ws);
         ws.send(JSON.stringify({ type: 'session:assigned', sessionId: sid }));
         if (mainWindow) mainWindow.webContents.send('session:guest-joined', sid);
 
         ws.on('message', (raw) => {
             try {
                 const m = JSON.parse(raw.toString());
-                if (m.type === 'pty:create') {
-                    const proc = spawnPtyForSession(sid, m.cols, m.rows);
-                    proc.onData(data => {
-                        if (ws.readyState === WebSocket.OPEN)
-                            ws.send(JSON.stringify({ type: 'pty:data', data }));
-                    });
-                    proc.onExit(() => {
-                        if (ws.readyState === WebSocket.OPEN)
-                            ws.send(JSON.stringify({ type: 'pty:exit' }));
-                        ptyMap.delete(sid);
-                    });
-                } else if (m.type === 'pty:write') {
-                    ptyMap.get(sid)?.write(m.data);
-                } else if (m.type === 'pty:resize') {
-                    ptyMap.get(sid)?.resize(m.cols, m.rows);
+                if (m.type === 'run:file') {
+                    // Guest triggered Run — execute on host on their behalf
+                    hostRunFile(m.code, m.filePath);
                 } else if (m.type === 'file:request') {
-                    // Guest wants to open a file — have the host's renderer open it so it syncs via Yjs
                     const content = fs.readFileSync(m.path, 'utf-8');
                     mainWindow.webContents.send('file:open', { filePath: m.path, content });
                     mainWindow.setTitle('IDEntity - ' + m.path);
@@ -157,10 +149,17 @@ function startTermServer() {
         });
 
         ws.on('close', () => {
-            ptyMap.get(sid)?.kill();
-            ptyMap.delete(sid);
+            guestSockets.delete(sid);
             if (mainWindow) mainWindow.webContents.send('session:guest-left', sid);
         });
+    });
+}
+
+// Broadcast a message to all connected guests
+function broadcastGuests(msg) {
+    const payload = JSON.stringify(msg);
+    guestSockets.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(payload);
     });
 }
 
@@ -255,6 +254,7 @@ ipcMain.on('session:join', (event, { ip }) => {
             const m = JSON.parse(raw.toString());
             if (m.type === 'pty:data') mainWindow.webContents.send('pty:data', m.data);
             else if (m.type === 'pty:exit') mainWindow.webContents.send('pty:exit');
+            else if (m.type === 'run:done') mainWindow.webContents.send('run:done', m.code);
         } catch (_) {}
     });
     wsClient.on('error', (err) => {
@@ -269,38 +269,79 @@ ipcMain.on('session:solo', () => {
 
 // --- PTY IPC (mode-aware) ---
 ipcMain.on('pty:create', (event, { cols, rows }) => {
-    if (sessionMode === 'guest') {
-        wsClient?.send(JSON.stringify({ type: 'pty:create', cols, rows }));
-        return;
-    }
+    if (sessionMode === 'guest') return; // guests mirror host — no local PTY
     if (ptyMap.has(LOCAL_SID)) { ptyMap.get(LOCAL_SID).kill(); ptyMap.delete(LOCAL_SID); }
     const proc = spawnPtyForSession(LOCAL_SID, cols, rows);
-    proc.onData(data => { if (mainWindow) mainWindow.webContents.send('pty:data', data); });
-    proc.onExit(() => { if (mainWindow) mainWindow.webContents.send('pty:exit'); ptyMap.delete(LOCAL_SID); });
+    proc.onData(data => {
+        if (mainWindow) mainWindow.webContents.send('pty:data', data);
+        broadcastGuests({ type: 'pty:data', data });
+    });
+    proc.onExit(() => {
+        if (mainWindow) mainWindow.webContents.send('pty:exit');
+        broadcastGuests({ type: 'pty:exit' });
+        ptyMap.delete(LOCAL_SID);
+    });
 });
 
 ipcMain.on('pty:write', (event, data) => {
-    if (sessionMode === 'guest') { wsClient?.send(JSON.stringify({ type: 'pty:write', data })); return; }
+    if (sessionMode === 'guest') return; // guests are read-only
     ptyMap.get(LOCAL_SID)?.write(data);
 });
 
 ipcMain.on('pty:resize', (event, { cols, rows }) => {
-    if (sessionMode === 'guest') { wsClient?.send(JSON.stringify({ type: 'pty:resize', cols, rows })); return; }
+    if (sessionMode === 'guest') return;
     ptyMap.get(LOCAL_SID)?.resize(cols, rows);
 });
 
 ipcMain.on('pty:kill', () => {
-    if (sessionMode === 'guest') { wsClient?.close(); return; }
+    if (sessionMode === 'guest') return;
     ptyMap.get(LOCAL_SID)?.kill();
     ptyMap.delete(LOCAL_SID);
 });
 
+// Shared run logic used by both host IPC and guest WS requests
+function hostRunFile(code, filePath) {
+    if (runProcess) { runProcess.kill(); runProcess = null; }
+
+    // Save to actual file path (or temp) — this is the "save before run"
+    const targetPath = filePath || path.join(os.tmpdir(), 'identity_run.py');
+    fs.writeFileSync(targetPath, code, 'utf-8');
+
+    const sendData = (str) => {
+        if (mainWindow) mainWindow.webContents.send('pty:data', str);
+        broadcastGuests({ type: 'pty:data', data: str });
+    };
+
+    sendData(`\r\n\x1b[36m▶ Running ${path.basename(targetPath)}...\x1b[0m\r\n`);
+
+    runProcess = spawn('python', [targetPath]);
+    runProcess.stdout.on('data', d => sendData(d.toString()));
+    runProcess.stderr.on('data', d => sendData(`\x1b[31m${d.toString()}\x1b[0m`));
+    runProcess.on('close', (code) => {
+        runProcess = null;
+        const msg = code === 0
+            ? `\r\n\x1b[32m✓ Exited (0)\x1b[0m\r\n`
+            : `\r\n\x1b[31m✗ Exited (${code})\x1b[0m\r\n`;
+        sendData(msg);
+        if (mainWindow) mainWindow.webContents.send('run:done', code);
+        broadcastGuests({ type: 'run:done', code });
+    });
+}
+
 ipcMain.on('run:file', (event, { code, filePath }) => {
-    if (sessionMode === 'guest') return;
-    const tmpPath = path.join(os.tmpdir(), 'identity_run.py');
-    fs.writeFileSync(tmpPath, code, 'utf-8');
-    const runPath = filePath || tmpPath;
-    ptyMap.get(LOCAL_SID)?.write(`python "${runPath}"\r`);
+    if (sessionMode === 'guest') {
+        wsClient?.send(JSON.stringify({ type: 'run:file', code, filePath }));
+        return;
+    }
+    hostRunFile(code, filePath);
+});
+
+ipcMain.on('run:kill', () => {
+    if (sessionMode === 'guest') {
+        wsClient?.send(JSON.stringify({ type: 'run:kill' }));
+        return;
+    }
+    if (runProcess) { runProcess.kill(); runProcess = null; }
 });
 
 // Remove native menu bar — UI is handled by React

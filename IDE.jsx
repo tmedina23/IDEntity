@@ -131,6 +131,7 @@ export default function App() {
   const fitAddonRef       = useRef(null);
   const activeFilePathRef = useRef(null);
   const cursorStyleRef    = useRef(null);
+  const sessionModeRef    = useRef(null);
 
   // --- Yjs refs ---
   const ydocRef          = useRef(new Y.Doc());
@@ -145,6 +146,10 @@ export default function App() {
   useEffect(() => {
     activeFilePathRef.current = activeFilePath;
   }, [activeFilePath]);
+
+  useEffect(() => {
+    sessionModeRef.current = sessionMode;
+  }, [sessionMode]);
 
   // --- Cursor style injection ---
   useEffect(() => {
@@ -410,12 +415,15 @@ export default function App() {
     termRef.current    = term;
     fitAddonRef.current = fitAddon;
 
-    term.onData(data => window.electronAPI.writePty(data));
+    term.onData(data => {
+      if (sessionModeRef.current !== 'guest') window.electronAPI.writePty(data);
+    });
     window.electronAPI.onPtyData(data => term.write(data));
     window.electronAPI.onPtyExit(() => {
       term.writeln("\r\n\x1b[33m[process exited]\x1b[0m");
       setRunning(false);
     });
+    window.electronAPI.onRunDone(() => setRunning(false));
 
     const ro = new ResizeObserver(() => {
       fitAddon.fit();
@@ -429,10 +437,20 @@ export default function App() {
   // --- Handlers ---
   const handleRun = useCallback(() => {
     if (!editorRef.current) return;
-    window.electronAPI.runFile(editorRef.current.getValue(), activeFilePathRef.current);
+    const code = editorRef.current.getValue();
+    const filePath = activeFilePathRef.current;
+    if (sessionModeRef.current !== 'guest' && filePath) {
+      window.electronAPI.sendContent('save', code);
+      setTabs(prev => prev.map(t => t.path === filePath ? { ...t, modified: false } : t));
+    }
+    window.electronAPI.runFile(code, filePath);
     termRef.current?.focus();
     setRunning(true);
-    setTimeout(() => setRunning(false), 30_000);
+  }, []);
+
+  const handleStop = useCallback(() => {
+    window.electronAPI.killRun();
+    setRunning(false);
   }, []);
 
   const handleTabClick = useCallback((path) => {
@@ -479,7 +497,7 @@ export default function App() {
 
   const sessionBadge = sessionMode && sessionMode !== "solo"
     ? sessionMode === "host"
-      ? `Hosting  •  ${guestCount > 0 ? `${guestCount} guest${guestCount !== 1 ? "s" : ""}` : "no guests"}`
+      ? `Hosting ${sessionIp}  •  ${guestCount > 0 ? `${guestCount} guest${guestCount !== 1 ? "s" : ""}` : "no guests"}`
       : `Connected to ${sessionIp}`
     : null;
 
@@ -632,24 +650,21 @@ export default function App() {
           )}
           <button
             className={`run-btn ${running ? "running" : ""}`}
-            onClick={handleRun}
+            onClick={running ? handleStop : handleRun}
             disabled={!activeFilePath}
-            title="Run file via Python"
+            title={running ? "Stop" : "Run file via Python"}
           >
             {running ? <StopIcon /> : <PlayIcon />}
             {running ? "Running…" : "Run File"}
           </button>
           <div className="toolbar-actions">
-            <button className="icon-btn" title="Settings">⚙</button>
-            <button className="icon-btn" title="Split editor">◫</button>
+            <button className="icon-btn" title="Toggle Sidebar">◫</button>
           </div>
         </header>
 
         <aside className="sidebar">
           <div className="sidebar-tabs">
-            {["EXPLORER", "SEARCH", "GIT"].map(t => (
-              <div key={t} className={`sidebar-tab ${t === "EXPLORER" ? "active" : ""}`}>{t}</div>
-            ))}
+            <div className = "sidebar-tab active"> EXPLORER </div>
           </div>
           <div className="sidebar-header">{folderName || "No folder open"}</div>
           <div className="file-tree">
@@ -724,6 +739,9 @@ export default function App() {
             {["TERMINAL", "PROBLEMS", "OUTPUT"].map(t => (
               <div key={t} className={`term-tab ${t === "TERMINAL" ? "active" : ""}`}>{t}</div>
             ))}
+            {sessionMode === 'guest' && (
+              <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 6, letterSpacing: '0.08em' }}>READ-ONLY</span>
+            )}
             <div className="term-spacer" />
             <div className="term-ctrl">
               <span className="term-icon" title="New terminal"
