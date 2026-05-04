@@ -169,12 +169,9 @@ function startTermServer() {
             try {
                 const m = JSON.parse(raw.toString());
                 if (m.type === 'run:file') {
-                    // Guest triggered Run — execute on host on their behalf
                     hostRunFile(m.code, m.filePath);
-                } else if (m.type === 'file:request') {
-                    const content = fs.readFileSync(m.path, 'utf-8');
-                    mainWindow.webContents.send('file:open', { filePath: m.path, content });
-                    mainWindow.setTitle('IDEntity - ' + m.path);
+                } else if (m.type === 'file:access-request') {
+                    if (mainWindow) mainWindow.webContents.send('file:access-request', { sid, filePath: m.filePath, guestName: m.guestName || 'Guest' });
                 }
             } catch (_) {}
         });
@@ -276,6 +273,12 @@ const buildFileTree = (dirPath) => {
         children: entry.isDirectory() ? buildFileTree(path.join(dirPath, entry.name)) : null
     }));
 };
+
+ipcMain.on('file:access-request', (event, { filePath, guestName }) => {
+    if (sessionMode === 'guest') {
+        wsClient?.send(JSON.stringify({ type: 'file:access-request', filePath, guestName }));
+    }
+});
 
 ipcMain.on('file:select', (event, filePath) => {
     if (sessionMode === 'guest') {
