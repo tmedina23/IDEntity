@@ -188,6 +188,8 @@ function startTermServer() {
                 const m = JSON.parse(raw.toString());
                 if (m.type === 'run:file') {
                     hostRunFile(m.code, m.filePath);
+                } else if (m.type === 'run:request') {
+                    if (mainWindow) mainWindow.webContents.send('run:access-request', { sid, code: m.code, filePath: m.filePath, guestName: m.guestName || 'Guest' });
                 } else if (m.type === 'file:access-request') {
                     if (mainWindow) mainWindow.webContents.send('file:access-request', { sid, filePath: m.filePath, guestName: m.guestName || 'Guest' });
                 }
@@ -258,7 +260,7 @@ const createWindow = () => {
         title: 'IDEntity'
     });
     mainWindow.loadFile('./dist/index.html');
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
     mainWindow.on('closed', () => { app.quit(); });
 };
 
@@ -351,8 +353,14 @@ ipcMain.on('session:join', (event, { ip }) => {
             else if (m.type === 'run:done') mainWindow.webContents.send('run:done', m.code);
         } catch (_) {}
     });
-    wsClient.on('error', (err) => {
-        mainWindow.webContents.send('session:error', err.message);
+    wsClient.on('close', () => {
+        if (sessionMode === 'guest') {
+            sessionMode = null;
+            mainWindow.webContents.send('session:disconnected');
+        }
+    });
+    wsClient.on('error', () => {
+        // 'close' fires after error, so disconnected is handled there
     });
 });
 
@@ -413,9 +421,9 @@ function hostRunFile(code, filePath) {
     });
 }
 
-ipcMain.on('run:file', (event, { code, filePath }) => {
+ipcMain.on('run:file', (event, { code, filePath, guestName }) => {
     if (sessionMode === 'guest') {
-        wsClient?.send(JSON.stringify({ type: 'run:file', code, filePath }));
+        wsClient?.send(JSON.stringify({ type: 'run:request', code, filePath, guestName }));
         return;
     }
     hostRunFile(code, filePath);

@@ -139,6 +139,7 @@ export default function App() {
   const [sessionReady,    setSessionReady]    = useState(false);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const [accessRequests, setAccessRequests] = useState([]);
+  const [runRequests,    setRunRequests]    = useState([]);
   const [awarenessStates, setAwarenessStates] = useState(new Map());
   const [toast, setToast] = useState(null);
 
@@ -493,6 +494,19 @@ export default function App() {
     window.electronAPI.onFileAccessRequest((req) => {
       setAccessRequests(prev => prev.find(r => r.sid === req.sid && r.filePath === req.filePath) ? prev : [...prev, req]);
     });
+
+    window.electronAPI.onRunRequest((req) => {
+      setRunRequests(prev => prev.find(r => r.sid === req.sid) ? prev : [...prev, req]);
+    });
+
+    window.electronAPI.onSessionDisconnected(() => {
+      providerRef.current?.destroy();
+      providerRef.current = null;
+      setSessionMode(null);
+      setOverlayPanel("main");
+      setSessionReady(false);
+      setSessionError("You have been disconnected from the host.");
+    });
   }, []);
 
   // --- Start PTY once session is ready ---
@@ -642,9 +656,9 @@ export default function App() {
       window.electronAPI.sendContent('save', code);
       setTabs(prev => prev.map(t => t.path === filePath ? { ...t, modified: false } : t));
     }
-    window.electronAPI.runFile(code, filePath);
+    window.electronAPI.runFile(code, filePath, userName);
     termRef.current?.focus();
-    setRunning(true);
+    if (sessionModeRef.current !== 'guest') setRunning(true);
   }, []);
 
   const handleStop = useCallback(() => {
@@ -659,6 +673,16 @@ export default function App() {
 
   const handleDenyAccess = useCallback((sid, filePath) => {
     setAccessRequests(prev => prev.filter(r => !(r.sid === sid && r.filePath === filePath)));
+  }, []);
+
+  const handleGrantRun = useCallback((sid, code, filePath) => {
+    window.electronAPI.runFile(code, filePath);
+    setRunning(true);
+    setRunRequests(prev => prev.filter(r => r.sid !== sid));
+  }, []);
+
+  const handleDenyRun = useCallback((sid) => {
+    setRunRequests(prev => prev.filter(r => r.sid !== sid));
   }, []);
 
   const handleTabClick = useCallback((path) => {
@@ -847,10 +871,10 @@ export default function App() {
       {/* General toast */}
       {toast && <div className="ui-toast">{toast}</div>}
 
-      {/* File access request toasts (host only) */}
-      {accessRequests.length > 0 && (
+      {/* Host approval toasts */}
+      {(accessRequests.length > 0 || runRequests.length > 0) && (
         <div className="access-requests">
-          {accessRequests.map((req, i) => (
+          {accessRequests.map((req) => (
             <div key={`${req.sid}-${req.filePath}`} className="access-request-card">
               <div className="access-request-info">
                 <strong>{req.guestName}</strong> wants to open{' '}
@@ -859,6 +883,18 @@ export default function App() {
               <div className="access-request-actions">
                 <button className="access-btn accept" onClick={() => handleGrantAccess(req.sid, req.filePath)}>Open</button>
                 <button className="access-btn deny"   onClick={() => handleDenyAccess(req.sid, req.filePath)}>Dismiss</button>
+              </div>
+            </div>
+          ))}
+          {runRequests.map((req) => (
+            <div key={`run-${req.sid}`} className="access-request-card">
+              <div className="access-request-info">
+                <strong>{req.guestName}</strong> wants to run{' '}
+                <span className="access-request-file">{req.filePath ? req.filePath.split(/[\\/]/).pop() : 'file'}</span>
+              </div>
+              <div className="access-request-actions">
+                <button className="access-btn accept" onClick={() => handleGrantRun(req.sid, req.code, req.filePath)}>Run</button>
+                <button className="access-btn deny"   onClick={() => handleDenyRun(req.sid)}>Dismiss</button>
               </div>
             </div>
           ))}

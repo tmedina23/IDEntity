@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onPtyExit: (cb) => ipcRenderer.on('pty:exit', () => cb()),
 
     // Run
-    runFile: (code, filePath) => ipcRenderer.send('run:file', { code, filePath }),
+    runFile: (code, filePath, guestName) => ipcRenderer.send('run:file', { code, filePath, guestName }),
+    onRunRequest: (cb) => ipcRenderer.on('run:access-request', (_, data) => cb(data)),
     killRun: () => ipcRenderer.send('run:kill'),
     onRunDone: (cb) => ipcRenderer.on('run:done', (_, code) => cb(code)),
 
@@ -37,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onSessionConnected: (cb) => ipcRenderer.on('session:connected', (_, data) => cb(data)),
     onSessionSoloStarted: (cb) => ipcRenderer.on('session:solo-started', () => cb()),
     onSessionError: (cb) => ipcRenderer.on('session:error', (_, msg) => cb(msg)),
+    onSessionDisconnected: (cb) => ipcRenderer.on('session:disconnected', () => cb()),
     onGuestJoined: (cb) => ipcRenderer.on('session:guest-joined', (_, sid) => cb(sid)),
     onGuestLeft: (cb) => ipcRenderer.on('session:guest-left', (_, sid) => cb(sid)),
 
