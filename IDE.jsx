@@ -778,6 +778,10 @@ export default function App() {
     }
   }, [notes, notesTitle]);
 
+  const RUNNABLE_EXTS = new Set(['py', 'js', 'ts', 'jsx', 'tsx', 'rb', 'sh', 'java', 'c', 'cpp']);
+  const activeExt = activeFilePath ? activeFilePath.split('.').pop().toLowerCase() : null;
+  const isRunnable = running || (activeExt && RUNNABLE_EXTS.has(activeExt));
+
   const breadcrumbs = activeFilePath
     ? activeFilePath.replace(/\\/g, "/").split("/").slice(-3)
     : [];
@@ -978,15 +982,16 @@ export default function App() {
           {sessionBadge && (
             <div className={`session-badge ${sessionMode}`}>{sessionBadge}</div>
           )}
-          <button
-            className={`run-btn ${running ? "running" : ""}`}
-            onClick={running ? handleStop : handleRun}
-            disabled={!activeFilePath}
-            title={running ? "Stop" : "Run file via Python"}
-          >
-            {running ? <StopIcon /> : <PlayIcon />}
-            {running ? "Running…" : "Run File"}
-          </button>
+          {isRunnable && (
+            <button
+              className={`run-btn ${running ? "running" : ""}`}
+              onClick={running ? handleStop : handleRun}
+              title={running ? "Stop" : "Run file"}
+            >
+              {running ? <StopIcon /> : <PlayIcon />}
+              {running ? "Running…" : "Run File"}
+            </button>
+          )}
           <div className="toolbar-actions">
             <button className="icon-btn" title="Toggle File Explorer" onClick={() => setSidebarVisible(!sidebarVisible)}>◫</button>
             <button className="icon-btn" title="Toggle Terminal" onClick={() => setTerminalVisible(!terminalVisible)}>⌨</button>
