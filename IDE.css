@@ -691,3 +691,58 @@ body {
 .status-item { display: flex; align-items: center; gap: 5px; }
 .status-sep { color: rgba(74,242,161,.2); }
 .status-right { margin-left: auto; display: flex; gap: 16px; }
+
+/* ─── File Access Request Toasts ─── */
+.access-requests {
+    position: fixed; top: calc(var(--toolbar-h) + 10px); right: 16px;
+    z-index: 600; display: flex; flex-direction: column; gap: 8px;
+}
+.access-request-card {
+    background: var(--bg-raised); border: 1px solid var(--border-hi);
+    border-left: 3px solid var(--accent); border-radius: 6px;
+    padding: 12px 14px; min-width: 280px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5);
+    display: flex; flex-direction: column; gap: 10px;
+    animation: slideIn .18s ease-out both;
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.access-request-info { font-size: 12px; color: var(--text-sec); line-height: 1.5; }
+.access-request-file { color: var(--accent); }
+.access-request-actions { display: flex; gap: 8px; }
+.access-btn {
+    flex: 1; padding: 5px 0; border-radius: 4px; border: 1px solid transparent;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: filter .12s, border-color .12s, color .12s;
+}
+.access-btn.accept { background: var(--accent); color: #0a0b0d; }
+.access-btn.accept:hover { filter: brightness(1.12); }
+.access-btn.deny { background: var(--bg-hover); color: var(--text-sec); border-color: var(--border-hi); }
+.access-btn.deny:hover { color: var(--red); border-color: var(--red); }
+
+/* ─── Tab User Presence Dots ─── */
+.tab-users { display: flex; align-items: center; margin-left: 5px; flex-shrink: 0; }
+.tab-user-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid var(--bg-panel);
+    margin-left: -3px; flex-shrink: 0; cursor: default;
+}
+.tab-user-dot:first-child { margin-left: 0; }
+.tab-user-more {
+    width: auto; height: auto; border-radius: 4px; padding: 0 3px;
+    font-size: 9px; line-height: 14px; border-radius: 3px;
+    background: var(--bg-hover); color: var(--text-dim);
+    border: 1px solid var(--border-hi); margin-left: 2px;
+}
+
+/* ─── General Toast ─── */
+.ui-toast {
+    position: fixed; top: calc(var(--toolbar-h) + 10px); left: 50%; transform: translateX(-50%);
+    background: var(--bg-raised); border: 1px solid var(--red); color: var(--red);
+    font-size: 12px; padding: 8px 18px; border-radius: 5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4); z-index: 700;
+    animation: fadeUp .15s ease-out both;
+    pointer-events: none;
+}

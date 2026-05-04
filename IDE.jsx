@@ -138,6 +138,14 @@ export default function App() {
   const [sessionIp,       setSessionIp]       = useState("");
   const [sessionReady,    setSessionReady]    = useState(false);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [awarenessStates, setAwarenessStates] = useState(new Map());
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
 
   // --- DOM refs ---
   const monacoContainerRef = useRef(null);
@@ -168,6 +176,9 @@ export default function App() {
 
   useEffect(() => {
     activeFilePathRef.current = activeFilePath;
+    if (providerRef.current) {
+      providerRef.current.awareness.setLocalStateField("currentFile", activeFilePath);
+    }
   }, [activeFilePath]);
 
   useEffect(() => {
@@ -237,7 +248,10 @@ export default function App() {
     providerRef.current = provider;
 
     provider.awareness.setLocalStateField("user", { name, color });
-    provider.awareness.on("change", () => updateCursorStyles(provider.awareness));
+    provider.awareness.on("change", () => {
+      updateCursorStyles(provider.awareness);
+      setAwarenessStates(new Map(provider.awareness.getStates()));
+    });
 
     provider.on("sync", () => {
       const tree       = yFileTree.get("tree");
@@ -246,9 +260,11 @@ export default function App() {
         setFileTree(tree);
         setFolderName(folderPath.split(/[\\/]/).pop());
       }
-      const activeFile = yState.get("activeFile");
-      if (activeFile && activeFile.filePath !== activeFilePathRef.current) {
-        openSharedFile(activeFile.filePath, activeFile.language);
+      const openTabs = yState.get("openTabs");
+      if (openTabs && openTabs.length > 0) {
+        setTabs(openTabs);
+        const last = openTabs[openTabs.length - 1];
+        openSharedFile(last.path, last.language);
       }
       setChatMessages(yChat.toArray());
       setNotes(yNotesText.toString());
@@ -265,9 +281,22 @@ export default function App() {
     });
 
     yState.observe(() => {
-      const activeFile = yState.get("activeFile");
-      if (activeFile && activeFile.filePath !== activeFilePathRef.current) {
-        openSharedFile(activeFile.filePath, activeFile.language);
+      if (sessionModeRef.current !== 'guest') return;
+      const openTabs = yState.get("openTabs");
+      if (!openTabs) return;
+      setTabs(openTabs);
+      if (!openTabs.find(t => t.path === activeFilePathRef.current)) {
+        if (openTabs.length > 0) {
+          const last = openTabs[openTabs.length - 1];
+          openSharedFile(last.path, last.language);
+        } else {
+          setActiveFilePath(null);
+          activeFilePathRef.current = null;
+          const blank = monaco.editor.createModel("", "plaintext");
+          const old = editorRef.current?.getModel();
+          editorRef.current?.setModel(blank);
+          old?.dispose();
+        }
       }
     });
 
@@ -352,6 +381,7 @@ export default function App() {
     yFileTree.delete("folderPath");
     yFileTree.delete("tree");
     yState.delete("activeFile");
+    yState.delete("openTabs");
     yChat.delete(0, yChat.length);
     yNotesText.delete(0, yNotesText.length);
     yNotesTitle.delete(0, yNotesTitle.length);
@@ -418,8 +448,8 @@ export default function App() {
     const onKey = (e) => {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
-      if (e.key === 'o' && !e.shiftKey) { e.preventDefault(); window.electronAPI.openFile(); }
-      if (e.key === 'O' &&  e.shiftKey) { e.preventDefault(); window.electronAPI.openFolder(); }
+      if (e.key === 'o' && !e.shiftKey) { e.preventDefault(); if (sessionModeRef.current === 'guest') { showToast('Only the host can open files.'); return; } window.electronAPI.openFile(); }
+      if (e.key === 'O' &&  e.shiftKey) { e.preventDefault(); if (sessionModeRef.current === 'guest') { showToast('Only the host can open folders.'); return; } window.electronAPI.openFolder(); }
       if (e.key === 's' && !e.shiftKey) { e.preventDefault(); window.electronAPI.triggerSave(); }
       if (e.key === 'S' &&  e.shiftKey) { e.preventDefault(); window.electronAPI.triggerSaveAs(); }
     };
@@ -459,6 +489,10 @@ export default function App() {
 
     window.electronAPI.onGuestJoined(() => setGuestCount(c => c + 1));
     window.electronAPI.onGuestLeft(()  => setGuestCount(c => Math.max(0, c - 1)));
+
+    window.electronAPI.onFileAccessRequest((req) => {
+      setAccessRequests(prev => prev.find(r => r.sid === req.sid && r.filePath === req.filePath) ? prev : [...prev, req]);
+    });
   }, []);
 
   // --- Start PTY once session is ready ---
@@ -516,7 +550,10 @@ export default function App() {
           yFiles.set(filePath, yText);
         }
         if (yText.length === 0 && content.length > 0) yText.insert(0, content);
-        yState.set("activeFile", { filePath, language: lang });
+        const currentOpenTabs = yState.get("openTabs") || [];
+        if (!currentOpenTabs.find(t => t.path === filePath)) {
+          yState.set("openTabs", [...currentOpenTabs, { path: filePath, name, language: lang, modified: false }]);
+        }
 
         const newModel = monaco.editor.createModel("", lang);
         const oldModel = editor.getModel();
@@ -615,12 +652,31 @@ export default function App() {
     setRunning(false);
   }, []);
 
+  const handleGrantAccess = useCallback((sid, filePath) => {
+    window.electronAPI.selectFile(filePath); // triggers onOpenFile → adds to openTabs → guests see it
+    setAccessRequests(prev => prev.filter(r => !(r.sid === sid && r.filePath === filePath)));
+  }, []);
+
+  const handleDenyAccess = useCallback((sid, filePath) => {
+    setAccessRequests(prev => prev.filter(r => !(r.sid === sid && r.filePath === filePath)));
+  }, []);
+
   const handleTabClick = useCallback((path) => {
-    window.electronAPI.selectFile(path);
+    if (sessionModeRef.current === 'guest') {
+      const openTabs = yState.get("openTabs") || [];
+      const tab = openTabs.find(t => t.path === path);
+      openSharedFile(path, tab?.language);
+    } else {
+      window.electronAPI.selectFile(path);
+    }
   }, []);
 
   const handleTabClose = useCallback((e, path) => {
     e.stopPropagation();
+    if (providerRef.current && sessionModeRef.current === 'host') {
+      const openTabs = yState.get("openTabs") || [];
+      yState.set("openTabs", openTabs.filter(t => t.path !== path));
+    }
     setTabs(prev => {
       const next = prev.filter(t => t.path !== path);
       if (activeFilePathRef.current === path) {
@@ -788,6 +844,27 @@ export default function App() {
         </div>
       )}
 
+      {/* General toast */}
+      {toast && <div className="ui-toast">{toast}</div>}
+
+      {/* File access request toasts (host only) */}
+      {accessRequests.length > 0 && (
+        <div className="access-requests">
+          {accessRequests.map((req, i) => (
+            <div key={`${req.sid}-${req.filePath}`} className="access-request-card">
+              <div className="access-request-info">
+                <strong>{req.guestName}</strong> wants to open{' '}
+                <span className="access-request-file">{req.filePath.split(/[\\/]/).pop()}</span>
+              </div>
+              <div className="access-request-actions">
+                <button className="access-btn accept" onClick={() => handleGrantAccess(req.sid, req.filePath)}>Open</button>
+                <button className="access-btn deny"   onClick={() => handleDenyAccess(req.sid, req.filePath)}>Dismiss</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Main IDE */}
       <div className="ide-shell" style={{ "--term-h": `${terminalVisible ? termHeight : 0}px`, "--sidebar-w": `${sidebarWidth}px`, "--right-sidebar-w": `${rightSidebarWidth}px` }} data-sidebar={sidebarVisible} data-terminal={terminalVisible} data-right-sidebar={rightSidebarVisible}>
 
@@ -802,10 +879,10 @@ export default function App() {
               <div className={`menu-item ${openMenu === "file" ? "active" : ""}`} onClick={() => toggleMenu("file")}>File</div>
               {openMenu === "file" && (
                 <div className="dropdown">
-                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.openFile(); }}>
+                  <div className="dd-item" onClick={() => { closeMenu(); if (sessionMode === 'guest') { showToast('Only the host can open files.'); return; } window.electronAPI.openFile(); }}>
                     Open File <span className="dd-shortcut">Ctrl+O</span>
                   </div>
-                  <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.openFolder(); }}>
+                  <div className="dd-item" onClick={() => { closeMenu(); if (sessionMode === 'guest') { showToast('Only the host can open folders.'); return; } window.electronAPI.openFolder(); }}>
                     Open Folder <span className="dd-shortcut">Ctrl+Shift+O</span>
                   </div>
                   <div className="dd-sep" />
@@ -903,7 +980,19 @@ export default function App() {
                   key={node.path}
                   node={node}
                   activeFilePath={activeFilePath}
-                  onSelect={(path) => window.electronAPI.selectFile(path)}
+                  onSelect={(path) => {
+                    if (sessionModeRef.current === 'guest') {
+                      const openTabs = yState.get("openTabs") || [];
+                      const tab = openTabs.find(t => t.path === path);
+                      if (tab) {
+                        openSharedFile(path, tab.language);
+                      } else {
+                        window.electronAPI.requestFileAccess(path, userName);
+                      }
+                    } else {
+                      window.electronAPI.selectFile(path);
+                    }
+                  }}
                 />
               ))
             )}
@@ -913,19 +1002,37 @@ export default function App() {
 
         <main className="editor-area">
           <div className="tab-bar">
-            {tabs.map(tab => (
-              <div
-                key={tab.path}
-                className={`tab ${tab.path === activeFilePath ? "active" : ""}`}
-                onClick={() => handleTabClick(tab.path)}
-                title={tab.path}
-              >
-                {tab.modified && <span className="tab-modified" title="Unsaved changes" />}
-                <FileIcon name={tab.name} />
-                {tab.name}
-                <span className="tab-close" onClick={e => handleTabClose(e, tab.path)}>✕</span>
-              </div>
-            ))}
+            {tabs.map(tab => {
+              const usersOnTab = [];
+              awarenessStates.forEach((state, clientID) => {
+                if (clientID !== ydoc.clientID && state.currentFile === tab.path && state.user) {
+                  usersOnTab.push(state.user);
+                }
+              });
+              return (
+                <div
+                  key={tab.path}
+                  className={`tab ${tab.path === activeFilePath ? "active" : ""}`}
+                  onClick={() => handleTabClick(tab.path)}
+                  title={tab.path}
+                >
+                  {tab.modified && <span className="tab-modified" title="Unsaved changes" />}
+                  <FileIcon name={tab.name} />
+                  {tab.name}
+                  {usersOnTab.length > 0 && (
+                    <span className="tab-users">
+                      {usersOnTab.slice(0, 5).map((u, i) => (
+                        <span key={i} className="tab-user-dot" style={{ background: u.color }} title={u.name} />
+                      ))}
+                      {usersOnTab.length > 5 && (
+                        <span className="tab-user-dot tab-user-more">+{usersOnTab.length - 5}</span>
+                      )}
+                    </span>
+                  )}
+                  <span className="tab-close" onClick={e => handleTabClose(e, tab.path)}>✕</span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="breadcrumb">

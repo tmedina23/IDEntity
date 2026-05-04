@@ -39,4 +39,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onSessionError: (cb) => ipcRenderer.on('session:error', (_, msg) => cb(msg)),
     onGuestJoined: (cb) => ipcRenderer.on('session:guest-joined', (_, sid) => cb(sid)),
     onGuestLeft: (cb) => ipcRenderer.on('session:guest-left', (_, sid) => cb(sid)),
+
+    // File access requests
+    requestFileAccess: (filePath, guestName) => ipcRenderer.send('file:access-request', { filePath, guestName }),
+    onFileAccessRequest: (cb) => ipcRenderer.on('file:access-request', (_, data) => cb(data)),
 });
