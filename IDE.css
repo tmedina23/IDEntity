@@ -504,6 +504,10 @@ body {
     flex: 1; overflow: hidden; display: flex; flex-direction: column;
 }
 
+.notes-panel input, button {
+    font-family: 'JetBrains Mono', monospace;
+}
+
 /* Chat Panel */
 .chat-panel {
     flex: 1; display: flex; flex-direction: column; overflow: hidden;
@@ -574,6 +578,7 @@ body {
 .notes-title-input {
     flex: 1; padding: 6px 8px; border: 1px solid var(--border-hi); border-radius: 4px;
     background: var(--bg-base); color: var(--text-pri); font-size: 12px; outline: none;
+    max-width: 180px;
 }
 
 .notes-title-input:focus {
