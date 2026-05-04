@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hostSession: () => ipcRenderer.send('session:host'),
     joinSession: (ip) => ipcRenderer.send('session:join', { ip }),
     soloSession: () => ipcRenderer.send('session:solo'),
+    resetSession: () => ipcRenderer.send('session:reset'),
     onSessionStarted: (cb) => ipcRenderer.on('session:started', (_, data) => cb(data)),
     onSessionConnected: (cb) => ipcRenderer.on('session:connected', (_, data) => cb(data)),
     onSessionSoloStarted: (cb) => ipcRenderer.on('session:solo-started', () => cb()),

@@ -7,7 +7,8 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { MonacoBinding } from "y-monaco";
 import "./IDE.css";
-import banner_logo from "./images/Banner2.png";
+import banner_logo from "./images/banner_white.png";
+import menu_logo from "./images/title.png";
 
 self.MonacoEnvironment = {
   getWorkerUrl(moduleId, label) {
@@ -102,12 +103,26 @@ export default function App() {
   const [language,       setLanguage]       = useState("plaintext");
   const [running,        setRunning]        = useState(false);
   const [termHeight,     setTermHeight]     = useState(220);
+  const [sidebarWidth,   setSidebarWidth]   = useState(220);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
 
   // --- Menu dropdown state ---
   const [openMenu, setOpenMenu] = useState(null); // 'file' | 'edit' | 'view' | 'window' | null
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
   const toggleMenu = useCallback((name) => setOpenMenu(o => o === name ? null : name), []);
+
+  // --- Panel visibility state ---
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [terminalVisible, setTerminalVisible] = useState(true);
+  const [rightSidebarVisible, setRightSidebarVisible] = useState(false);
+  const [rightSidebarTab, setRightSidebarTab] = useState('chat'); // 'chat' | 'notes'
+
+  // --- Chat and Notes state ---
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [notes, setNotes] = useState('');
+  const [notesTitle, setNotesTitle] = useState('Code Notes');
 
   // --- Session state ---
   const [sessionMode,     setSessionMode]     = useState(null); // null=overlay, 'solo','host','guest'
@@ -120,6 +135,7 @@ export default function App() {
   const [guestCount,      setGuestCount]      = useState(0);
   const [sessionIp,       setSessionIp]       = useState("");
   const [sessionReady,    setSessionReady]    = useState(false);
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
 
   // --- DOM refs ---
   const monacoContainerRef = useRef(null);
@@ -138,10 +154,13 @@ export default function App() {
   const providerRef      = useRef(null);
   const monacoBindingRef = useRef(null);
 
-  const ydoc      = ydocRef.current;
-  const yFiles    = ydoc.getMap("files");
-  const yFileTree = ydoc.getMap("fileTree");
-  const yState    = ydoc.getMap("state");
+  const ydoc         = ydocRef.current;
+  const yFiles       = ydoc.getMap("files");
+  const yFileTree    = ydoc.getMap("fileTree");
+  const yState       = ydoc.getMap("state");
+  const yChat        = ydoc.getArray("chat"); // Shared chat messages
+  const yNotesText   = ydoc.getText("notesText"); // Shared notes body
+  const yNotesTitle  = ydoc.getText("notesTitle"); // Shared notes title
 
   useEffect(() => {
     activeFilePathRef.current = activeFilePath;
@@ -158,6 +177,17 @@ export default function App() {
     cursorStyleRef.current = el;
     return () => el.remove();
   }, []);
+
+  function getTextContrast(hexColor) {
+    if (!hexColor) return "#fff";
+    const normalized = hexColor.replace("#", "");
+    const bigint = parseInt(normalized.length === 3 ? normalized.split("").map(c => c + c).join("") : normalized, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 140 ? "#111" : "#fff";
+  }
 
   function updateCursorStyles(awareness) {
     if (!cursorStyleRef.current) return;
@@ -216,6 +246,9 @@ export default function App() {
       if (activeFile && activeFile.filePath !== activeFilePathRef.current) {
         openSharedFile(activeFile.filePath, activeFile.language);
       }
+      setChatMessages(yChat.toArray());
+      setNotes(yNotesText.toString());
+      setNotesTitle(yNotesTitle.toString() || "Code Notes");
     });
 
     yFileTree.observe(() => {
@@ -233,6 +266,18 @@ export default function App() {
         openSharedFile(activeFile.filePath, activeFile.language);
       }
     });
+
+    yChat.observe(() => {
+      setChatMessages(yChat.toArray());
+    });
+
+    yNotesText.observe(() => {
+      setNotes(yNotesText.toString());
+    });
+
+    yNotesTitle.observe(() => {
+      setNotesTitle(yNotesTitle.toString() || "Code Notes");
+    });
   }
 
   // --- Identity picker confirm ---
@@ -246,11 +291,113 @@ export default function App() {
   }
 
   function handleConnect() {
-    const ip = hostIpInput.trim().split(":")[0];
-    if (!ip) return;
+    const ip = hostIpInput.trim();
+    if (!ip) {
+      setSessionError("Please enter the host IP address.");
+      return;
+    }
     setSessionError("");
-    window.electronAPI.joinSession(ip);
+    window.electronAPI.joinSession(ip.split(":")[0]);
   }
+
+  const handleCopySessionIp = useCallback(() => {
+    if (!sessionIp) return;
+    const text = sessionIp;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+      const temp = document.createElement('textarea');
+      temp.value = text;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand('copy');
+      document.body.removeChild(temp);
+    }
+    setCopiedToClipboard(true);
+    setTimeout(() => setCopiedToClipboard(false), 2000);
+  }, [sessionIp]);
+
+  const handleReturnToMenu = useCallback(() => {
+    const hasUnsaved = tabs.some(tab => tab.modified);
+    if (hasUnsaved) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Returning to the menu will discard them. Continue?"
+      );
+      if (!confirmed) return;
+    }
+
+    window.electronAPI.resetSession();
+    providerRef.current?.destroy();
+    providerRef.current = null;
+    monacoBindingRef.current?.destroy();
+    monacoBindingRef.current = null;
+
+    const fileKeys = [];
+    yFiles.forEach((_, key) => fileKeys.push(key));
+    fileKeys.forEach(key => yFiles.delete(key));
+    yFileTree.delete("folderPath");
+    yFileTree.delete("tree");
+    yState.delete("activeFile");
+    yChat.delete(0, yChat.length);
+    yNotesText.delete(0, yNotesText.length);
+    yNotesTitle.delete(0, yNotesTitle.length);
+
+    setFileTree([]);
+    setTabs([]);
+    setActiveFilePath(null);
+    activeFilePathRef.current = null;
+    setFolderName(null);
+    setLanguage("plaintext");
+
+    setSessionMode(null);
+    setOverlayPanel("main");
+    setPendingSession(null);
+    setUserName("");
+    setHostIpInput("");
+    setSessionError("");
+    setGuestCount(0);
+    setSessionIp("");
+    setSessionReady(false);
+    setSidebarVisible(true);
+    setTerminalVisible(true);
+    setRightSidebarVisible(false);
+    setRightSidebarTab('chat');
+
+    if (editorRef.current) {
+      const blank = monaco.editor.createModel("", "plaintext");
+      const oldModel = editorRef.current.getModel();
+      editorRef.current.setModel(blank);
+      oldModel?.dispose();
+    }
+  }, [tabs]);
+
+  const handleSidebarResizeMouseDown = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev) => setSidebarWidth(Math.max(160, Math.min(420, startW + (ev.clientX - startX))));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+      editorRef.current?.layout();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+  }, [sidebarWidth]);
+
+  const handleRightSidebarResizeMouseDown = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = rightSidebarWidth;
+    const onMove = (ev) => setRightSidebarWidth(Math.max(200, Math.min(500, startW - (ev.clientX - startX))));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+      editorRef.current?.layout();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+  }, [rightSidebarWidth]);
 
   // --- Keyboard shortcuts + click-outside to close menus ---
   useEffect(() => {
@@ -380,6 +527,7 @@ export default function App() {
     window.electronAPI.onOpenFolder(({ folderPath, fileTree }) => {
       setFileTree(fileTree);
       setFolderName(folderPath.split(/[\\/]/).pop());
+      setSidebarVisible(true); // Force sidebar to appear when folder is opened
       if (providerRef.current) {
         yFileTree.set("folderPath", folderPath);
         yFileTree.set("tree", fileTree);
@@ -491,14 +639,65 @@ export default function App() {
     window.addEventListener("mouseup",   onUp);
   }, [termHeight]);
 
+  const exportNotes = useCallback((format) => {
+    const content = `# ${notesTitle}\n\n${notes}`;
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = `${notesTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}`;
+
+    if (format === 'txt') {
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'md') {
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'pdf') {
+      // For PDF export, we'll use a simple approach with window.print
+      // In a real implementation, you'd want to use a proper PDF library
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${notesTitle}</title>
+            <style>
+              body { font-family: monospace; padding: 20px; }
+              pre { white-space: pre-wrap; }
+            </style>
+          </head>
+          <body>
+            <h1>${notesTitle}</h1>
+            <pre>${notes}</pre>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  }, [notes, notesTitle]);
+
   const breadcrumbs = activeFilePath
     ? activeFilePath.replace(/\\/g, "/").split("/").slice(-3)
     : [];
 
   const sessionBadge = sessionMode && sessionMode !== "solo"
     ? sessionMode === "host"
-      ? `Hosting ${sessionIp}  •  ${guestCount > 0 ? `${guestCount} guest${guestCount !== 1 ? "s" : ""}` : "no guests"}`
-      : `Connected to ${sessionIp}`
+      ? (
+        <>
+          <span>Hosting {sessionIp}</span>
+          <button className="session-copy-btn" onClick={handleCopySessionIp} title="Copy host IP">{copiedToClipboard ? "Copied!" : "Copy"}</button>
+          <span className="session-guest-count">• {guestCount > 0 ? `${guestCount} guest${guestCount !== 1 ? "s" : ""}` : "no guests"}</span>
+        </>
+      )
+      : <>Connected to {sessionIp}</>
     : null;
 
   return (
@@ -507,7 +706,9 @@ export default function App() {
       {sessionMode === null && (
         <div className="session-overlay">
           <div className="session-modal">
-            <div className="session-logo">IDEntity</div>
+            <div className="session-logo">
+              <img src={menu_logo} alt="IDEntity" />
+            </div>
             <div className="session-subtitle">collaborative IDE</div>
 
             {overlayPanel === "main" && (
@@ -575,7 +776,7 @@ export default function App() {
       )}
 
       {/* Main IDE */}
-      <div className="ide-shell" style={{ "--term-h": `${termHeight}px` }}>
+      <div className="ide-shell" style={{ "--term-h": `${terminalVisible ? termHeight : 0}px`, "--sidebar-w": `${sidebarWidth}px`, "--right-sidebar-w": `${rightSidebarWidth}px` }} data-sidebar={sidebarVisible} data-terminal={terminalVisible} data-right-sidebar={rightSidebarVisible}>
 
         <header className="toolbar">
           <div className="toolbar-brand">
@@ -600,6 +801,9 @@ export default function App() {
                   </div>
                   <div className="dd-item" onClick={() => { closeMenu(); window.electronAPI.triggerSaveAs(); }}>
                     Save As <span className="dd-shortcut">Ctrl+Shift+S</span>
+                  </div>
+                  <div className="dd-item danger" onClick={() => { closeMenu(); handleReturnToMenu(); }}>
+                    Return to Menu
                   </div>
                   <div className="dd-sep" />
                   <div className="dd-item danger" onClick={() => { closeMenu(); window.electronAPI.quit(); }}>Quit</div>
@@ -658,7 +862,9 @@ export default function App() {
             {running ? "Running…" : "Run File"}
           </button>
           <div className="toolbar-actions">
-            <button className="icon-btn" title="Toggle Sidebar">◫</button>
+            <button className="icon-btn" title="Toggle File Explorer" onClick={() => setSidebarVisible(!sidebarVisible)}>◫</button>
+            <button className="icon-btn" title="Toggle Terminal" onClick={() => setTerminalVisible(!terminalVisible)}>⌨</button>
+            <button className="icon-btn" title="Toggle Right Sidebar" onClick={() => setRightSidebarVisible(!rightSidebarVisible)}>⋮⋮</button>
           </div>
         </header>
 
@@ -683,6 +889,7 @@ export default function App() {
               ))
             )}
           </div>
+          <div className="sidebar-resizer" onMouseDown={handleSidebarResizeMouseDown} />
         </aside>
 
         <main className="editor-area">
@@ -754,6 +961,138 @@ export default function App() {
           </div>
           <div ref={xtermContainerRef} className="xterm-container" />
         </section>
+
+        <aside className="right-sidebar">
+          <div className="right-sidebar-resizer" onMouseDown={handleRightSidebarResizeMouseDown} />
+          <div className="sidebar-tabs">
+            <div
+              className={`sidebar-tab ${rightSidebarTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setRightSidebarTab('chat')}
+            >
+              CHAT
+            </div>
+            <div
+              className={`sidebar-tab ${rightSidebarTab === 'notes' ? 'active' : ''}`}
+              onClick={() => setRightSidebarTab('notes')}
+            >
+              NOTES
+            </div>
+          </div>
+          <div className="right-sidebar-content">
+            {rightSidebarTab === 'chat' && (
+              <div className="chat-panel">
+                <div className="chat-messages">
+                  {chatMessages.length === 0 ? (
+                    <div className="chat-empty">
+                      {providerRef.current
+                        ? "No messages yet. Start the conversation!"
+                        : "Connect to a multi-user session to chat with others."
+                      }
+                    </div>
+                  ) : (
+                    chatMessages.map((msg, i) => {
+                      const isOwnMessage = msg.sender === userName || msg.sender === 'You';
+                      return (
+                        <div
+                          key={i}
+                          className={`chat-message ${isOwnMessage ? 'sent' : 'received'}`}
+                          style={{
+                            backgroundColor: msg.color || (isOwnMessage ? selectedColor : 'var(--bg-raised)'),
+                            color: getTextContrast(msg.color || (isOwnMessage ? selectedColor : '#fff')),
+                            borderColor: msg.color ? 'transparent' : undefined,
+                          }}
+                        >
+                          <div className="chat-sender">{msg.sender}</div>
+                          <div className="chat-text">{msg.text}</div>
+                          <div className="chat-time">{msg.time}</div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="chat-input-area">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    disabled={!providerRef.current}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && chatInput.trim() && providerRef.current) {
+                        const newMessage = {
+                          sender: userName || 'Anonymous',
+                          text: chatInput.trim(),
+                          time: new Date().toLocaleTimeString(),
+                          color: selectedColor,
+                          type: 'sent'
+                        };
+                        yChat.push([newMessage]);
+                        setChatInput('');
+                      }
+                    }}
+                    placeholder={providerRef.current ? "Type a message..." : "Connect to a session to chat"}
+                    className="chat-input"
+                  />
+                </div>
+              </div>
+            )}
+            {rightSidebarTab === 'notes' && (
+              <div className="notes-panel">
+                <div className="notes-header">
+                  <input
+                    type="text"
+                    value={notesTitle}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setNotesTitle(value);
+                      if (providerRef.current) {
+                        yNotesTitle.delete(0, yNotesTitle.length);
+                        yNotesTitle.insert(0, value);
+                      }
+                    }}
+                    className="notes-title-input"
+                    placeholder="Notes title"
+                  />
+                  <div className="notes-actions">
+                    <button
+                      className="notes-export-btn"
+                      onClick={() => exportNotes('txt')}
+                      title="Export as TXT"
+                    >
+                      TXT
+                    </button>
+                    <button
+                      className="notes-export-btn"
+                      onClick={() => exportNotes('md')}
+                      title="Export as Markdown"
+                    >
+                      MD
+                    </button>
+                    <button
+                      className="notes-export-btn"
+                      onClick={() => exportNotes('pdf')}
+                      title="Export as PDF"
+                    >
+                      PDF
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={notes}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNotes(value);
+                    if (providerRef.current) {
+                      yNotesText.delete(0, yNotesText.length);
+                      yNotesText.insert(0, value);
+                    }
+                  }}
+                  placeholder="Take notes about code..."
+                  className="notes-textarea"
+                />
+              </div>
+            )}
+          </div>
+        </aside>
 
         <footer className="status-bar">
           <div className="status-item">⎇ main</div>

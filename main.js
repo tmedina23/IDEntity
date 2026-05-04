@@ -18,6 +18,8 @@ const isMac = process.platform === 'darwin';
 // --- Session State ---
 let sessionMode = null; // 'solo' | 'host' | 'guest'
 let wsClient = null; // guest: WS connection to host's term server
+let yjsServer = null;
+let termServer = null;
 
 // --- PTY Management ---
 const ptyMap = new Map(); // sessionId -> ptyProcess
@@ -27,6 +29,7 @@ let runProcess = null; // active child_process for Run button
 const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || 'bash');
 let currentFolderPath = null;
 let currentFilePath = null;
+let ptySize = { cols: 80, rows: 24 };
 
 // --- Yjs Server State (host only) ---
 const YPORT = 4444;
@@ -57,9 +60,37 @@ function spawnPtyForSession(sid, cols, rows) {
     return proc;
 }
 
+function createLocalPty(cols, rows) {
+    if (ptyMap.has(LOCAL_SID)) {
+        ptyMap.get(LOCAL_SID).kill();
+        ptyMap.delete(LOCAL_SID);
+    }
+    const proc = spawnPtyForSession(LOCAL_SID, cols, rows);
+    proc.onData(data => {
+        if (mainWindow) mainWindow.webContents.send('pty:data', data);
+        broadcastGuests({ type: 'pty:data', data });
+    });
+    proc.onExit(() => {
+        if (mainWindow) mainWindow.webContents.send('pty:exit');
+        broadcastGuests({ type: 'pty:exit' });
+        ptyMap.delete(LOCAL_SID);
+    });
+    return proc;
+}
+
+function setWorkingDirectory(folderPath) {
+    if (!folderPath) return;
+    currentFolderPath = folderPath;
+    process.chdir(folderPath);
+    if (sessionMode === 'guest') return;
+    if (ptyMap.has(LOCAL_SID)) {
+        createLocalPty(ptySize.cols, ptySize.rows);
+    }
+}
+
 // --- Yjs WebSocket Server (host only) ---
 function startYjsServer() {
-    const yjsServer = new WebSocketServer({ port: YPORT });
+    yjsServer = new WebSocketServer({ port: YPORT });
     yjsServer.on('connection', (conn) => {
         conn.binaryType = 'arraybuffer';
 
@@ -127,7 +158,7 @@ function startYjsServer() {
 // --- Terminal / Session WebSocket Server (host only) ---
 // Guests get a read-only mirror of the host terminal — no per-guest PTY.
 function startTermServer() {
-    const termServer = new WebSocketServer({ port: TPORT });
+    termServer = new WebSocketServer({ port: TPORT });
     termServer.on('connection', (ws) => {
         const sid = crypto.randomUUID();
         guestSockets.set(sid, ws);
@@ -163,6 +194,37 @@ function broadcastGuests(msg) {
     });
 }
 
+function stopSession() {
+    if (wsClient) {
+        wsClient.close();
+        wsClient = null;
+    }
+    guestSockets.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.close(); });
+    guestSockets.clear();
+    if (termServer) {
+        termServer.close();
+        termServer = null;
+    }
+    if (yjsServer) {
+        yjsServer.close();
+        yjsServer = null;
+    }
+    if (ptyMap.has(LOCAL_SID)) {
+        ptyMap.get(LOCAL_SID).kill();
+        ptyMap.delete(LOCAL_SID);
+    }
+    if (runProcess) {
+        runProcess.kill();
+        runProcess = null;
+    }
+    sessionMode = null;
+    currentFolderPath = null;
+    currentFilePath = null;
+    if (mainWindow) mainWindow.webContents.send('session:reset');
+}
+
+ipcMain.on('session:reset', () => stopSession());
+
 // --- Window ---
 const createWindow = () => {
     mainWindow = new BrowserWindow({
@@ -177,7 +239,7 @@ const createWindow = () => {
     });
     mainWindow.loadFile('./dist/index.html');
     mainWindow.webContents.openDevTools();
-    mainWindow.on('closed', () => { mainWindow = null; });
+    mainWindow.on('closed', () => { app.quit(); });
 };
 
 app.on('ready', createWindow);
@@ -189,6 +251,7 @@ const openFile = async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] });
     if (canceled) return;
     currentFilePath = filePaths[0];
+    setWorkingDirectory(path.dirname(currentFilePath));
     const content = fs.readFileSync(currentFilePath, 'utf-8');
     mainWindow.webContents.send('file:open', { filePath: currentFilePath, content });
     mainWindow.setTitle('IDEntity - ' + currentFilePath);
@@ -198,6 +261,7 @@ const openFolder = async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
     if (canceled) return;
     currentFolderPath = filePaths[0];
+    setWorkingDirectory(currentFolderPath);
     const fileTree = buildFileTree(currentFolderPath);
     mainWindow.webContents.send('folder:open', { folderPath: currentFolderPath, fileTree });
     mainWindow.setTitle('IDEntity - ' + currentFolderPath);
@@ -270,17 +334,8 @@ ipcMain.on('session:solo', () => {
 // --- PTY IPC (mode-aware) ---
 ipcMain.on('pty:create', (event, { cols, rows }) => {
     if (sessionMode === 'guest') return; // guests mirror host — no local PTY
-    if (ptyMap.has(LOCAL_SID)) { ptyMap.get(LOCAL_SID).kill(); ptyMap.delete(LOCAL_SID); }
-    const proc = spawnPtyForSession(LOCAL_SID, cols, rows);
-    proc.onData(data => {
-        if (mainWindow) mainWindow.webContents.send('pty:data', data);
-        broadcastGuests({ type: 'pty:data', data });
-    });
-    proc.onExit(() => {
-        if (mainWindow) mainWindow.webContents.send('pty:exit');
-        broadcastGuests({ type: 'pty:exit' });
-        ptyMap.delete(LOCAL_SID);
-    });
+    ptySize = { cols, rows };
+    createLocalPty(cols, rows);
 });
 
 ipcMain.on('pty:write', (event, data) => {
