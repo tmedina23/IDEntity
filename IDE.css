@@ -385,6 +385,17 @@ body {
     cursor: pointer; transition: background .12s, color .12s;
 }
 .icon-btn:hover { background: var(--bg-hover); color: var(--text-pri); }
+.icon-btn.unread::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    background: var(--red);
+    border-radius: 50%;
+    border: 1px solid var(--bg-base);
+}
 
 /* ─── Sidebar ─── */
 
@@ -424,10 +435,21 @@ body {
 .sidebar-tab {
     flex: 1; padding: 8px 0; text-align: center; font-size: 11px; letter-spacing: .06em;
     color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
-    transition: color .12s, border-color .12s;
+    transition: color .12s, border-color .12s; position: relative;
 }
 .sidebar-tab.active { color: var(--accent); border-color: var(--accent); }
 .sidebar-tab:hover:not(.active) { color: var(--text-sec); }
+.sidebar-tab.unread::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 6px;
+    height: 6px;
+    background: var(--red);
+    border-radius: 50%;
+    border: 1px solid var(--bg-panel);
+}
 
 .sidebar-header {
     padding: 10px 12px 6px; font-size: 10px; font-weight: 700;
@@ -467,7 +489,7 @@ body {
 .right-sidebar .sidebar-tab {
     flex: 1; padding: 8px 0; text-align: center; font-size: 11px; letter-spacing: .06em;
     color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
-    transition: color .12s, border-color .12s;
+    transition: color .12s, border-color .12s; position: relative;
 }
 
 .right-sidebar .sidebar-tab.active {

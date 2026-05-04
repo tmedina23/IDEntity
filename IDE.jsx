@@ -123,6 +123,8 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
   const [notes, setNotes] = useState('');
   const [notesTitle, setNotesTitle] = useState('Code Notes');
+  const [unreadChat, setUnreadChat] = useState(false);
+  const [messagesRead, setMessagesRead] = useState(0);
 
   // --- Session state ---
   const [sessionMode,     setSessionMode]     = useState(null); // null=overlay, 'solo','host','guest'
@@ -161,6 +163,8 @@ export default function App() {
   const yChat        = ydoc.getArray("chat"); // Shared chat messages
   const yNotesText   = ydoc.getText("notesText"); // Shared notes body
   const yNotesTitle  = ydoc.getText("notesTitle"); // Shared notes title
+
+  const chatVisible = rightSidebarVisible && rightSidebarTab === 'chat';
 
   useEffect(() => {
     activeFilePathRef.current = activeFilePath;
@@ -279,6 +283,16 @@ export default function App() {
       setNotesTitle(yNotesTitle.toString() || "Code Notes");
     });
   }
+
+  // --- Unread chat indicator ---
+  useEffect(() => {
+    if (chatVisible) {
+      if (messagesRead !== chatMessages.length) setMessagesRead(chatMessages.length);
+      if (unreadChat) setUnreadChat(false);
+      return;
+    }
+    setUnreadChat(chatMessages.length > messagesRead);
+  }, [chatMessages.length, chatVisible, messagesRead, unreadChat]);
 
   // --- Identity picker confirm ---
   function enterIDE() {
@@ -739,15 +753,13 @@ export default function App() {
                 />
                 {sessionError && <div className="session-err">{sessionError}</div>}
                 <button className="s-btn primary" onClick={handleConnect}>Connect</button>
-                <button className="s-btn secondary" onClick={() => { setOverlayPanel("main"); setSessionError(""); }}>
-                  Back
-                </button>
+                <button className="s-btn secondary" onClick={() => { handleReturnToMenu(); }}>Back</button>
               </div>
             )}
 
             {overlayPanel === "identity" && (
               <div className="session-btns">
-                <div className="identity-title">Choose your identity</div>
+                <div className="identity-title">Choose your IDEntity</div>
                 <input
                   className="session-input"
                   type="text"
@@ -769,6 +781,7 @@ export default function App() {
                   ))}
                 </div>
                 <button className="s-btn primary" onClick={enterIDE}>Enter IDE</button>
+                <button className="s-btn secondary" onClick={() => { setOverlayPanel("main"); setSessionError(""); }}>Back</button>
               </div>
             )}
           </div>
@@ -864,7 +877,13 @@ export default function App() {
           <div className="toolbar-actions">
             <button className="icon-btn" title="Toggle File Explorer" onClick={() => setSidebarVisible(!sidebarVisible)}>◫</button>
             <button className="icon-btn" title="Toggle Terminal" onClick={() => setTerminalVisible(!terminalVisible)}>⌨</button>
-            <button className="icon-btn" title="Toggle Right Sidebar" onClick={() => setRightSidebarVisible(!rightSidebarVisible)}>⋮⋮</button>
+            <button className={`icon-btn ${!chatVisible && unreadChat ? 'unread' : ''}`} title="Toggle Right Sidebar" onClick={() => {
+              setRightSidebarVisible(!rightSidebarVisible);
+              if (unreadChat && !chatVisible) {
+                setUnreadChat(false);
+                setMessagesRead(chatMessages.length);
+              }
+            }}>⋮⋮</button>
           </div>
         </header>
 
@@ -943,9 +962,7 @@ export default function App() {
 
         <section className="terminal-area">
           <div className="term-header">
-            {["TERMINAL", "PROBLEMS", "OUTPUT"].map(t => (
-              <div key={t} className={`term-tab ${t === "TERMINAL" ? "active" : ""}`}>{t}</div>
-            ))}
+              <div className="term-tab active">TERMINAL</div>
             {sessionMode === 'guest' && (
               <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 6, letterSpacing: '0.08em' }}>READ-ONLY</span>
             )}
@@ -966,8 +983,12 @@ export default function App() {
           <div className="right-sidebar-resizer" onMouseDown={handleRightSidebarResizeMouseDown} />
           <div className="sidebar-tabs">
             <div
-              className={`sidebar-tab ${rightSidebarTab === 'chat' ? 'active' : ''}`}
-              onClick={() => setRightSidebarTab('chat')}
+              className={`sidebar-tab ${rightSidebarTab === 'chat' ? 'active' : ''} ${rightSidebarTab !== 'chat' && unreadChat ? 'unread' : ''}`}
+              onClick={() => {
+                setRightSidebarTab('chat');
+                setUnreadChat(false);
+                setMessagesRead(chatMessages.length);
+              }}
             >
               CHAT
             </div>

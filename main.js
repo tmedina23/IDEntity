@@ -90,7 +90,16 @@ function setWorkingDirectory(folderPath) {
 
 // --- Yjs WebSocket Server (host only) ---
 function startYjsServer() {
+    if (yjsServer) {
+        yjsServer.close();
+        yjsServer = null;
+    }
+
     yjsServer = new WebSocketServer({ port: YPORT });
+    yjsServer.on('error', (err) => {
+        if (mainWindow) mainWindow.webContents.send('session:error', `Yjs server error: ${err.message}`);
+    });
+
     yjsServer.on('connection', (conn) => {
         conn.binaryType = 'arraybuffer';
 
@@ -158,7 +167,16 @@ function startYjsServer() {
 // --- Terminal / Session WebSocket Server (host only) ---
 // Guests get a read-only mirror of the host terminal — no per-guest PTY.
 function startTermServer() {
+    if (termServer) {
+        termServer.close();
+        termServer = null;
+    }
+
     termServer = new WebSocketServer({ port: TPORT });
+    termServer.on('error', (err) => {
+        if (mainWindow) mainWindow.webContents.send('session:error', `Terminal server error: ${err.message}`);
+    });
+
     termServer.on('connection', (ws) => {
         const sid = crypto.randomUUID();
         guestSockets.set(sid, ws);
@@ -194,21 +212,26 @@ function broadcastGuests(msg) {
     });
 }
 
-function stopSession() {
+function closeWebSocketServer(server) {
+    return new Promise((resolve) => {
+        if (!server) return resolve();
+        server.close(() => resolve());
+    });
+}
+
+async function stopSession() {
     if (wsClient) {
         wsClient.close();
         wsClient = null;
     }
     guestSockets.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.close(); });
     guestSockets.clear();
-    if (termServer) {
-        termServer.close();
-        termServer = null;
-    }
-    if (yjsServer) {
-        yjsServer.close();
-        yjsServer = null;
-    }
+    await Promise.all([
+        closeWebSocketServer(termServer),
+        closeWebSocketServer(yjsServer)
+    ]);
+    termServer = null;
+    yjsServer = null;
     if (ptyMap.has(LOCAL_SID)) {
         ptyMap.get(LOCAL_SID).kill();
         ptyMap.delete(LOCAL_SID);
@@ -223,7 +246,7 @@ function stopSession() {
     if (mainWindow) mainWindow.webContents.send('session:reset');
 }
 
-ipcMain.on('session:reset', () => stopSession());
+ipcMain.on('session:reset', async () => await stopSession());
 
 // --- Window ---
 const createWindow = () => {
@@ -299,7 +322,11 @@ ipcMain.on('file:content', async (event, { mode, content }) => {
 });
 
 // --- Session IPC ---
-ipcMain.on('session:host', () => {
+ipcMain.on('session:host', async () => {
+    if (sessionMode !== null) {
+        await stopSession();
+    }
+
     sessionMode = 'host';
     startYjsServer();
     startTermServer();
